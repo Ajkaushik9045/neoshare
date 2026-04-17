@@ -10,6 +10,12 @@ import '../../features/identity/data/repositories/identity_repo_impl.dart';
 import '../../features/identity/domain/repositories/identity_repo.dart';
 import '../../features/identity/domain/usecases/provision_identity.dart';
 import '../../features/identity/presentation/bloc/identity_bloc.dart';
+import '../../features/transfer/data/datasources/firestore_transfer_ds.dart';
+import '../../features/transfer/data/datasources/storage_ds.dart';
+import '../../features/transfer/data/repositories/transfer_repo_impl.dart';
+import '../../features/transfer/domain/repositories/transfer_repo.dart';
+import '../../features/transfer/domain/usecases/send_transfer.dart';
+import '../../features/transfer/presentation/bloc/send_bloc.dart';
 
 /// Global service locator for dependency registration and retrieval.
 final GetIt sl = GetIt.instance;
@@ -40,8 +46,27 @@ Future<void> setupServiceLocator() async {
     ..registerLazySingleton<ProvisionIdentity>(
       () => ProvisionIdentity(sl<IdentityRepo>()),
     )
+    ..registerLazySingleton<StorageDataSource>(
+      StorageDataSource.new,
+    )
+    ..registerLazySingleton<FirestoreTransferDataSource>(
+      FirestoreTransferDataSource.new,
+    )
+    ..registerLazySingleton<TransferRepo>(
+      () => TransferRepoImpl(
+        storageDataSource: sl<StorageDataSource>(),
+        firestoreTransferDataSource: sl<FirestoreTransferDataSource>(),
+        firestore: sl<FirebaseFirestore>(),
+      ),
+    )
+    ..registerLazySingleton<SendTransfer>(
+      () => SendTransfer(sl<TransferRepo>()),
+    )
     ..registerFactory<IdentityBloc>(
       () => IdentityBloc(sl<ProvisionIdentity>()),
+    )
+    ..registerFactory<SendBloc>(
+      () => SendBloc(sl<SendTransfer>()),
     );
 
   AppLogger.success('Dependency graph registration completed');

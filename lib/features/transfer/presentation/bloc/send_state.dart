@@ -20,12 +20,12 @@ class SendLoading extends SendState {
 
 /// Success state with created transfer payload.
 class SendSuccess extends SendState {
-  const SendSuccess(this.transfer);
+  const SendSuccess(this.recipient);
 
-  final Transfer transfer;
+  final Recipient recipient;
 
   @override
-  List<Object?> get props => [transfer];
+  List<Object?> get props => [recipient];
 }
 
 /// Error state for invalid recipient or send failures.

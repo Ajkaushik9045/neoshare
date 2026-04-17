@@ -2,8 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/utils/app_logger.dart';
-import '../../domain/entities/transfer.dart';
-import '../../domain/entities/transfer_file.dart';
+import '../../domain/entities/recipient.dart';
 import '../../domain/usecases/send_transfer.dart';
 
 part 'send_event.dart';
@@ -27,20 +26,31 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     );
     emit(const SendLoading());
     try {
-      final transfer = await _sendTransfer(
+      final recipient = await _sendTransfer(
         senderShortCode: event.senderShortCode,
         recipientShortCode: event.recipientShortCode,
-        files: event.files,
       );
-      AppLogger.success('SendBloc transfer created', data: transfer.id);
-      emit(SendSuccess(transfer));
+      AppLogger.success('SendBloc recipient lookup success', data: recipient.uid);
+      emit(SendSuccess(recipient));
     } catch (error, stackTrace) {
       AppLogger.error(
         'SendBloc send failed',
         error: error,
         stackTrace: stackTrace,
       );
-      emit(SendError(error.toString().replaceFirst('Exception: ', '')));
+      emit(SendError(_friendlyMessage(error)));
     }
+  }
+
+  String _friendlyMessage(Object error) {
+    final raw = error.toString();
+    final stripped = raw
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('FirebaseException: ', '')
+        .trim();
+    if (stripped.isEmpty || stripped == 'null') {
+      return 'Something went wrong while validating recipient. Please try again.';
+    }
+    return stripped;
   }
 }

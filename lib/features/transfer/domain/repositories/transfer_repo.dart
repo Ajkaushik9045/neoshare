@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../entities/recipient.dart';
 import '../entities/transfer.dart';
 import '../entities/transfer_file.dart';
@@ -9,9 +10,24 @@ abstract class TransferRepo {
     required String recipientShortCode,
   });
 
-  Future<Transfer> sendTransfer({
-    required String receiverId,
+  Future<Transfer> createPendingTransfer({
+    required String transferId,
+    required String senderId,
+    required String recipientCode,
+    required String recipientUid,
     required List<TransferFile> files,
+  });
+
+  Future<void> updateTransferStatus(String transferId, String status);
+
+  Stream<double> uploadFile(TransferFile fileDesc, File localFile, String transferId);
+
+  Future<void> updateFileProgress(
+    String transferId,
+    String fileId,
+    int bytesUploaded,
+    String status, {
+    String? sha256,
   });
 
   Stream<List<Transfer>> watchIncoming({required String receiverId});

@@ -1,39 +1,50 @@
 part of 'send_bloc.dart';
 
-/// Send flow states.
 sealed class SendState extends Equatable {
   const SendState();
-
-  @override
-  List<Object?> get props => [];
+  @override List<Object?> get props => [];
 }
 
-/// Idle state before transfer request.
-class SendInitial extends SendState {
-  const SendInitial();
+class SendIdle extends SendState { const SendIdle(); }
+
+class LookingUpRecipient extends SendState { const LookingUpRecipient(); }
+
+class PreparingUpload extends SendState { const PreparingUpload(); }
+
+class RecipientFound extends SendState {
+  const RecipientFound(this.displayCode, this.recipientUid);
+  final String displayCode;
+  final String recipientUid;
+  @override List<Object?> get props => [displayCode, recipientUid];
 }
 
-/// Loading state while transfer operation executes.
-class SendLoading extends SendState {
-  const SendLoading();
+class RecipientNotFound extends SendState {
+  const RecipientNotFound(this.reason);
+  final String reason;
+  @override List<Object?> get props => [reason];
 }
 
-/// Success state with created transfer payload.
-class SendSuccess extends SendState {
-  const SendSuccess(this.recipient);
-
-  final Recipient recipient;
-
-  @override
-  List<Object?> get props => [recipient];
+class FilesSelected extends SendState {
+  const FilesSelected(this.files, {this.isMetered = false});
+  final List<PlatformFile> files;
+  final bool isMetered;
+  @override List<Object?> get props => [files, isMetered];
 }
 
-/// Error state for invalid recipient or send failures.
-class SendError extends SendState {
-  const SendError(this.message);
+class Uploading extends SendState {
+  const Uploading({
+    required this.fileProgress,
+    required this.totalProgress,
+  });
+  final Map<String, double> fileProgress; // fileId -> 0.0..1.0
+  final double totalProgress;
+  @override List<Object?> get props => [fileProgress, totalProgress];
+}
 
-  final String message;
+class UploadComplete extends SendState { const UploadComplete(); }
 
-  @override
-  List<Object?> get props => [message];
+class UploadFailed extends SendState {
+  const UploadFailed(this.reason);
+  final String reason;
+  @override List<Object?> get props => [reason];
 }

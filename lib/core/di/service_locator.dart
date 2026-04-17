@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -30,6 +31,7 @@ Future<void> setupServiceLocator() async {
   sl
     ..registerLazySingleton<FirebaseAuth>(() => FirebaseAuth.instance)
     ..registerLazySingleton<FirebaseFirestore>(() => FirebaseFirestore.instance)
+    ..registerLazySingleton<FirebaseStorage>(() => FirebaseStorage.instance)
     ..registerLazySingleton<LocalIdentityDataSource>(
       () => LocalIdentityDataSource(identityBox),
     )
@@ -47,10 +49,10 @@ Future<void> setupServiceLocator() async {
       () => ProvisionIdentity(sl<IdentityRepo>()),
     )
     ..registerLazySingleton<StorageDataSource>(
-      StorageDataSource.new,
+      () => StorageDataSource(sl<FirebaseStorage>()),
     )
     ..registerLazySingleton<FirestoreTransferDataSource>(
-      FirestoreTransferDataSource.new,
+      () => FirestoreTransferDataSource(sl<FirebaseFirestore>()),
     )
     ..registerLazySingleton<TransferRepo>(
       () => TransferRepoImpl(
@@ -66,7 +68,7 @@ Future<void> setupServiceLocator() async {
       () => IdentityBloc(sl<ProvisionIdentity>()),
     )
     ..registerFactory<SendBloc>(
-      () => SendBloc(sl<SendTransfer>()),
+      () => SendBloc(sl<TransferRepo>()),
     );
 
   AppLogger.success('Dependency graph registration completed');

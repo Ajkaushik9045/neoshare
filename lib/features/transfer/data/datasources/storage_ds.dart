@@ -1,11 +1,19 @@
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../domain/entities/transfer_file.dart';
 
 /// Handles file upload/download in storage backend.
 class StorageDataSource {
-  /// Uploads transfer files and returns temporary URLs.
-  ///
-  /// Placeholder values are returned in Phase 1.
-  Future<List<String>> uploadFiles(List<TransferFile> files) async {
-    return files.map((file) => 'https://placeholder.local/${file.name}').toList();
+  StorageDataSource(this._storage);
+
+  final FirebaseStorage _storage;
+
+  /// Uploads a single file and yields progress.
+  Stream<TaskSnapshot> uploadFile(TransferFile fileDesc, File localFile, String transferId) {
+    final ref = _storage.ref().child('transfers/$transferId/${fileDesc.fileId}');
+    final metadata = SettableMetadata(contentType: fileDesc.mimeType);
+    
+    final uploadTask = ref.putFile(localFile, metadata);
+    return uploadTask.snapshotEvents;
   }
 }

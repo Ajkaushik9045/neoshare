@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/service_locator.dart';
@@ -8,6 +9,7 @@ import '../../../identity/data/datasources/local_identity_ds.dart';
 import '../../../../shared/platform/platform_action_button.dart';
 import '../../../../shared/platform/platform_scaffold.dart';
 import '../../../../shared/widgets/app_platform_dialog.dart';
+import '../../../../shared/widgets/app_platform_indicator.dart';
 import '../../../../shared/widgets/app_scaffold_messenger.dart';
 import '../../../../shared/widgets/short_code_input_formatter.dart';
 import '../bloc/send_bloc.dart';
@@ -35,27 +37,69 @@ class _SendPageState extends State<SendPage> {
       create: (_) => sl<SendBloc>(),
       child: BlocConsumer<SendBloc, SendState>(
         listener: (context, state) async {
-          if (state is SendError) {
-            if (state.message == 'You cannot send files to yourself') {
+          if (state is RecipientNotFound) {
+            if (state.reason == 'You cannot send files to yourself') {
               await AppPlatformDialog.showMessage(
                 context: context,
                 title: "It's you",
-                message: state.message,
+                message: state.reason,
               );
               return;
             }
-            AppScaffoldMessenger.showError(context, state.message);
+            if (context.mounted) AppScaffoldMessenger.showError(context, state.reason);
           }
 
-          if (state is SendSuccess) {
+          if (state is UploadFailed) {
+            if (state.reason.contains('500 MB')) {
+              await AppPlatformDialog.showMessage(
+                context: context,
+                title: 'File Too Large',
+                message: state.reason,
+              );
+            } else {
+              AppScaffoldMessenger.showError(context, state.reason);
+            }
+          }
+
+          if (state is RecipientFound) {
             AppScaffoldMessenger.showInfo(
               context,
-              'Recipient found. Ready to send files.',
+              'Recipient found. Select files to send.',
             );
+            
+            final result = await fp.FilePicker.pickFiles(allowMultiple: true);
+            if (result != null && result.files.isNotEmpty && context.mounted) {
+              context.read<SendBloc>().add(FilesChosen(result.files));
+            }
+          }
+          
+          if (state is FilesSelected && state.isMetered) {
+             final proceed = await showDialog<bool>(
+               context: context,
+               builder: (ctx) => AlertDialog(
+                 title: const Text('Metered Connection'),
+                 content: const Text('You are on a metered connection. Proceed to send?'),
+                 actions: [
+                   TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                   TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+                 ],
+               ),
+             );
+             if (proceed == true && context.mounted) {
+               context.read<SendBloc>().add(const UploadConfirmed());
+             }
+          }
+          
+          if (state is UploadComplete) {
+            AppScaffoldMessenger.showInfo(context, 'Transfer completed!');
+            Navigator.of(context).pop();
           }
         },
         builder: (context, state) {
-          final isLoading = state is SendLoading;
+          final isLoading = state is LookingUpRecipient || state is Uploading || state is PreparingUpload;
+          final isUploading = state is Uploading;
+          final isPreparing = state is PreparingUpload;
+          
           return PlatformScaffold(
             title: 'NeoShare',
             body: Padding(
@@ -117,9 +161,55 @@ class _SendPageState extends State<SendPage> {
                           color: Colors.black45,
                         ),
                   ),
-                  const Spacer(),
-                  if (isLoading)
-                    const Center(child: CircularProgressIndicator.adaptive()),
+                  if (!isUploading) const Spacer(),
+                  if (isUploading) ...[
+                    const SizedBox(height: 16),
+                    Text('Total Progress: ${((state as Uploading).totalProgress * 100).toStringAsFixed(1)}%'),
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(value: (state as Uploading).totalProgress, minHeight: 8),
+                    const SizedBox(height: 20),
+                    const Text('Files:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: (state as Uploading).fileProgress.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        itemBuilder: (context, index) {
+                          final st = state as Uploading;
+                          final keys = st.fileProgress.keys.toList();
+                          final fileName = keys[index];
+                          final prog = st.fileProgress[fileName] ?? 0.0;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(child: Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  const SizedBox(width: 8),
+                                  Text('${(prog * 100).toStringAsFixed(1)}%'),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              LinearProgressIndicator(value: prog),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ] else if (isLoading)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const AppPlatformIndicator(),
+                          if (isPreparing) ...[
+                            const SizedBox(height: 12),
+                            const Text('Checking files...'),
+                          ]
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -128,9 +218,10 @@ class _SendPageState extends State<SendPage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
                 child: PlatformActionButton(
-                  label: isLoading ? 'Checking...' : 'Send Files',
+                  label: isUploading ? 'Uploading...' : 'Send Files',
                   isExpanded: true,
                   height: 58,
+                  isLoading: isLoading && !isUploading,
                   onPressed: isLoading ? null : () => _submit(context),
                 ),
               ),
@@ -161,7 +252,7 @@ class _SendPageState extends State<SendPage> {
     }
 
     context.read<SendBloc>().add(
-          SendRequested(
+          LookupRecipient(
             senderShortCode: currentUser.shortCode,
             recipientShortCode: normalizedRecipientCode,
           ),

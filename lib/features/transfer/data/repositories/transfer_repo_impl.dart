@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../../core/utils/app_logger.dart';
@@ -61,25 +62,50 @@ class TransferRepoImpl implements TransferRepo {
   }
 
   @override
-  Future<Transfer> sendTransfer({
-    required String receiverId,
+  Future<Transfer> createPendingTransfer({
+    required String transferId,
+    required String senderId,
+    required String recipientCode,
+    required String recipientUid,
     required List<TransferFile> files,
   }) async {
-    await _storageDataSource.uploadFiles(files);
-    final transferModel = await _firestoreTransferDataSource.createTransfer(
-      senderId: 'temp-sender-id',
-      receiverId: receiverId,
-      files: files
-          .map(
-            (file) => {
-              'name': file.name,
-              'sizeBytes': file.sizeBytes,
-              'mimeType': file.mimeType,
-            },
-          )
-          .toList(),
+    return _firestoreTransferDataSource.createTransfer(
+      transferId: transferId,
+      senderId: senderId,
+      recipientCode: recipientCode,
+      recipientUid: recipientUid,
+      files: files,
     );
-    return transferModel;
+  }
+
+  @override
+  Future<void> updateTransferStatus(String transferId, String status) async {
+    return _firestoreTransferDataSource.updateTransferStatus(transferId, status);
+  }
+
+  @override
+  Stream<double> uploadFile(TransferFile fileDesc, File localFile, String transferId) {
+    return _storageDataSource.uploadFile(fileDesc, localFile, transferId).map((snapshot) {
+      if (snapshot.totalBytes == 0) return 0.0;
+      return snapshot.bytesTransferred / snapshot.totalBytes;
+    });
+  }
+
+  @override
+  Future<void> updateFileProgress(
+    String transferId,
+    String fileId,
+    int bytesUploaded,
+    String status, {
+    String? sha256,
+  }) async {
+    return _firestoreTransferDataSource.updateFileProgress(
+      transferId,
+      fileId,
+      bytesUploaded,
+      status,
+      sha256: sha256,
+    );
   }
 
   @override

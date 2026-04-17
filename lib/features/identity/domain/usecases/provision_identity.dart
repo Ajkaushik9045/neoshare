@@ -7,7 +7,7 @@ class ProvisionIdentity {
 
   final IdentityRepo _identityRepo;
 
-  Future<AppUser> call({required String displayName}) {
-    return _identityRepo.provisionIdentity(displayName: displayName);
+  Future<AppUser> call() {
+    return _identityRepo.provisionIdentity();
   }
 }

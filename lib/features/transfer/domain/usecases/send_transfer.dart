@@ -9,9 +9,14 @@ class SendTransfer {
   final TransferRepo _transferRepo;
 
   Future<Transfer> call({
-    required String receiverId,
+    required String senderShortCode,
+    required String recipientShortCode,
     required List<TransferFile> files,
-  }) {
-    return _transferRepo.sendTransfer(receiverId: receiverId, files: files);
+  }) async {
+    final recipient = await _transferRepo.validateRecipientCode(
+      senderShortCode: senderShortCode,
+      recipientShortCode: recipientShortCode,
+    );
+    return _transferRepo.sendTransfer(receiverId: recipient.uid, files: files);
   }
 }

@@ -27,3 +27,13 @@ class SendSuccess extends SendState {
   @override
   List<Object?> get props => [transfer];
 }
+
+/// Error state for invalid recipient or send failures.
+class SendError extends SendState {
+  const SendError(this.message);
+
+  final String message;
+
+  @override
+  List<Object?> get props => [message];
+}

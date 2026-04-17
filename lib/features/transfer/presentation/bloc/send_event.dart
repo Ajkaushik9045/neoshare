@@ -11,13 +11,15 @@ sealed class SendEvent extends Equatable {
 /// Triggered when sender confirms files and receiver.
 class SendRequested extends SendEvent {
   const SendRequested({
-    required this.receiverId,
+    required this.senderShortCode,
+    required this.recipientShortCode,
     required this.files,
   });
 
-  final String receiverId;
+  final String senderShortCode;
+  final String recipientShortCode;
   final List<TransferFile> files;
 
   @override
-  List<Object?> get props => [receiverId, files];
+  List<Object?> get props => [senderShortCode, recipientShortCode, files];
 }

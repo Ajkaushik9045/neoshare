@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "597397485046",
+    "project_id": "neoshare-e2fa7",
+    "storage_bucket": "neoshare-e2fa7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:597397485046:android:7d5366d1405878f1b283d7",
+        "android_client_info": {
+          "package_name": "com.example.neoshare"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLbM6SwD_fKVqOLOeuuVnZadPTkKyp-I8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

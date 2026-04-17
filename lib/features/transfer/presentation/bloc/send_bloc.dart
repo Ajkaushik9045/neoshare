@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/transfer.dart';
 import '../../domain/entities/transfer_file.dart';
 import '../../domain/usecases/send_transfer.dart';
@@ -20,11 +21,26 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     SendRequested event,
     Emitter<SendState> emit,
   ) async {
-    emit(const SendLoading());
-    final transfer = await _sendTransfer(
-      receiverId: event.receiverId,
-      files: event.files,
+    AppLogger.step(
+      'SendBloc send requested',
+      data: 'sender=${event.senderShortCode}, receiver=${event.recipientShortCode}',
     );
-    emit(SendSuccess(transfer));
+    emit(const SendLoading());
+    try {
+      final transfer = await _sendTransfer(
+        senderShortCode: event.senderShortCode,
+        recipientShortCode: event.recipientShortCode,
+        files: event.files,
+      );
+      AppLogger.success('SendBloc transfer created', data: transfer.id);
+      emit(SendSuccess(transfer));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'SendBloc send failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      emit(SendError(error.toString().replaceFirst('Exception: ', '')));
+    }
   }
 }

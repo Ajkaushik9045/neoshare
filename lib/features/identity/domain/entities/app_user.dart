@@ -3,15 +3,15 @@ import 'package:equatable/equatable.dart';
 /// Core identity entity used across app layers.
 class AppUser extends Equatable {
   const AppUser({
-    required this.id,
-    required this.displayName,
-    required this.createdAtIso,
+    required this.shortCode,
+    required this.uid,
+    required this.fcmToken,
   });
 
-  final String id;
-  final String displayName;
-  final String createdAtIso;
+  final String shortCode;
+  final String uid;
+  final String fcmToken;
 
   @override
-  List<Object?> get props => [id, displayName, createdAtIso];
+  List<Object?> get props => [shortCode, uid, fcmToken];
 }

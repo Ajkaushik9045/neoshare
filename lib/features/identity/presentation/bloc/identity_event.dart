@@ -10,10 +10,5 @@ sealed class IdentityEvent extends Equatable {
 
 /// Requests provisioning of a local/remote app identity.
 class IdentityProvisionRequested extends IdentityEvent {
-  const IdentityProvisionRequested(this.displayName);
-
-  final String displayName;
-
-  @override
-  List<Object?> get props => [displayName];
+  const IdentityProvisionRequested();
 }

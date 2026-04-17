@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/app_user.dart';
 import '../../domain/usecases/provision_identity.dart';
 
@@ -19,8 +20,19 @@ class IdentityBloc extends Bloc<IdentityEvent, IdentityState> {
     IdentityProvisionRequested event,
     Emitter<IdentityState> emit,
   ) async {
+    AppLogger.step('IdentityBloc received provisioning request');
     emit(const IdentityLoading());
-    final user = await _provisionIdentity(displayName: event.displayName);
-    emit(IdentityReady(user));
+    try {
+      final user = await _provisionIdentity();
+      AppLogger.success('IdentityBloc provisioning success', data: user.shortCode);
+      emit(IdentityProvisioned(user));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'IdentityBloc provisioning failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      emit(IdentityError(error.toString().replaceFirst('Exception: ', '')));
+    }
   }
 }

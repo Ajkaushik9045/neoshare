@@ -19,11 +19,21 @@ class IdentityLoading extends IdentityState {
 }
 
 /// Success state carrying provisioned app user.
-class IdentityReady extends IdentityState {
-  const IdentityReady(this.user);
+class IdentityProvisioned extends IdentityState {
+  const IdentityProvisioned(this.user);
 
   final AppUser user;
 
   @override
   List<Object?> get props => [user];
+}
+
+/// Failure state for provisioning errors.
+class IdentityError extends IdentityState {
+  const IdentityError(this.message);
+
+  final String message;
+
+  @override
+  List<Object?> get props => [message];
 }

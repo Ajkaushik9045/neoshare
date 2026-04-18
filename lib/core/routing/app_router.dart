@@ -7,12 +7,15 @@ import '../../features/transfer/presentation/pages/send_page.dart';
 import 'main_shell_page.dart';
 
 // Private navigator keys for inner routers
-final GlobalKey<NavigatorState> _rootNavigatorKey =
-    GlobalKey<NavigatorState>(debugLabel: 'root');
-final GlobalKey<NavigatorState> _homeNavigatorKey =
-    GlobalKey<NavigatorState>(debugLabel: 'home');
-final GlobalKey<NavigatorState> _sendNavigatorKey =
-    GlobalKey<NavigatorState>(debugLabel: 'send');
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'root',
+);
+final GlobalKey<NavigatorState> _homeNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'home',
+);
+final GlobalKey<NavigatorState> _sendNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'send',
+);
 final GlobalKey<NavigatorState> _receiveNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'receive');
 
@@ -22,6 +25,18 @@ GoRouter createAppRouter() {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
+    // Handle deep links: neoshare://receive → /receive
+    redirect: (context, state) {
+      final uri = state.uri;
+      if (uri.scheme == 'neoshare' && uri.host == 'receive') {
+        return '/receive';
+      }
+      return null;
+    },
+    onException: (_, state, router) {
+      // Unknown route — fall back to home
+      router.go('/');
+    },
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {

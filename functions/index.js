@@ -10,7 +10,7 @@ setGlobalOptions({maxInstances: 10});
 
 /**
  * Fires when a transfer document is updated.
- * Sends an FCM push to the recipient when status → "complete".
+ * Sends FCM push to recipient when status transitions to "complete".
  */
 exports.notifyRecipientOnTransferComplete = onDocumentUpdated(
     "transfers/{transferId}",
@@ -20,12 +20,11 @@ exports.notifyRecipientOnTransferComplete = onDocumentUpdated(
       const transferId = event.params.transferId;
 
       logger.info(
-          `[FCM] Transfer ${transferId}: ` +
-            `${before.status} → ${after.status}`,
+          `[FCM] Transfer ${transferId}: ${before.status} → ${after.status}`,
       );
 
       if (before.status === after.status) {
-        logger.debug(`[FCM] Status unchanged, skipping.`);
+        logger.debug("[FCM] Status unchanged, skipping.");
         return null;
       }
       if (after.status !== "complete") {
@@ -40,7 +39,7 @@ exports.notifyRecipientOnTransferComplete = onDocumentUpdated(
 
       logger.info(
           `[FCM] Complete — sender=${senderCode} ` +
-            `recipient=${recipientCode} files=${fileCount}`,
+      `recipient=${recipientCode} files=${fileCount}`,
       );
 
       if (!recipientCode) {
@@ -73,18 +72,17 @@ exports.notifyRecipientOnTransferComplete = onDocumentUpdated(
         token: fcmToken,
         notification: {
           title: "You have a file waiting",
-          body: `${senderCode} sent you ${noun}. ` +
-                    "Open NeoShare to download.",
+          body: `${senderCode} sent you ${noun}. Open NeoShare to download.`,
         },
         data: {
           transferId,
           action: "open_receive",
+          deepLink: "neoshare://receive",
         },
         android: {
           priority: "high",
           notification: {
-            channelId: "neoshare_incoming",
-            clickAction: "FLUTTER_NOTIFICATION_CLICK",
+            channelId: "high_importance_channel",
           },
         },
         apns: {

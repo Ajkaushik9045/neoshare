@@ -24,11 +24,19 @@ void main() async {
     AppLogger.success('Firebase initialized');
 
     // Register FCM background handler exactly once at startup.
-    // Must be called before runApp and before any isolate is spawned.
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // Initialise local notifications (plugin must be ready before runApp)
+    // Initialise local notifications before runApp.
     await initLocalNotifications();
+
+    // Capture terminated-state message BEFORE runApp so it isn't lost.
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      AppLogger.step(
+        'FCM initial message captured in main()',
+        data: 'data=${initialMessage.data}',
+      );
+    }
 
     AppLogger.step('Setting up service locator');
     await setupServiceLocator();
@@ -38,7 +46,7 @@ void main() async {
     await sl<NotificationPermissionService>().requestIfNeeded();
     AppLogger.success('Notification permission check complete');
 
-    runApp(const NeoShareApp());
+    runApp(NeoShareApp(initialFcmMessage: initialMessage));
     AppLogger.success('NeoShare app launched');
   } catch (error, stackTrace) {
     AppLogger.error(
@@ -51,8 +59,47 @@ void main() async {
 }
 
 /// Root widget that wires app-level theme and initial route.
-class NeoShareApp extends StatelessWidget {
-  const NeoShareApp({super.key});
+class NeoShareApp extends StatefulWidget {
+  const NeoShareApp({super.key, this.initialFcmMessage});
+
+  final RemoteMessage? initialFcmMessage;
+
+  @override
+  State<NeoShareApp> createState() => _NeoShareAppState();
+}
+
+class _NeoShareAppState extends State<NeoShareApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Background tap: app was alive but backgrounded — fires immediately
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      AppLogger.step('FCM onMessageOpenedApp (main)', data: 'data=${msg.data}');
+      _navigateFromFcmData(msg.data);
+    });
+
+    // Terminated tap: navigate after first frame so router/shell is mounted
+    if (widget.initialFcmMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        AppLogger.step(
+          'FCM initial message navigating post-frame',
+          data: 'data=${widget.initialFcmMessage!.data}',
+        );
+        _navigateFromFcmData(widget.initialFcmMessage!.data);
+      });
+    }
+  }
+
+  void _navigateFromFcmData(Map<String, dynamic> data) {
+    final action = data['action'] as String?;
+    final router = sl<GoRouter>();
+    if (action == 'open_receive') {
+      router.go('/receive');
+    } else {
+      AppLogger.warning('FCM main nav: unknown action=$action');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

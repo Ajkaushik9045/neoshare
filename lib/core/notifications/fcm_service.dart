@@ -33,7 +33,7 @@ final FlutterLocalNotificationsPlugin _localNotifications =
     FlutterLocalNotificationsPlugin();
 
 /// Initialises [flutter_local_notifications] and creates the Android channel.
-/// Call once from [FcmService.initialize].
+/// Call once from main() before runApp.
 Future<void> initLocalNotifications() async {
   const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
   const darwinInit = DarwinInitializationSettings();
@@ -44,7 +44,10 @@ Future<void> initLocalNotifications() async {
 
   await _localNotifications.initialize(
     initSettings,
-    onDidReceiveNotificationResponse: _onLocalNotificationTap,
+    onDidReceiveNotificationResponse: (response) {
+      // Delegate to the mutable callback — set by FcmService.initialize()
+      _onLocalNotificationTap?.call(response);
+    },
   );
 
   // Create the high-importance channel on Android 8+
@@ -92,7 +95,6 @@ class FcmService {
       AppLogger.step('Local notification tapped', data: 'payload=$action');
       _route(action);
     };
-
     if (_initialized) {
       AppLogger.step(
         'FcmService already initialized, skipping re-registration',
@@ -123,22 +125,6 @@ class FcmService {
 
     // Foreground messages — show via local notifications
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-
-    // Background → foreground via notification tap
-    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
-      AppLogger.step('FCM onMessageOpenedApp', data: 'data=${msg.data}');
-      _route(msg.data['action'] as String?);
-    });
-
-    // Terminated → opened via notification tap
-    final initial = await _messaging.getInitialMessage();
-    if (initial != null) {
-      AppLogger.step(
-        'FCM getInitialMessage (launched from notification)',
-        data: 'data=${initial.data}',
-      );
-      _route(initial.data['action'] as String?);
-    }
 
     AppLogger.success('FcmService ready for $userShortCode');
   }

@@ -7,6 +7,7 @@ class StorageDataSource {
   StorageDataSource(this._storage);
 
   final FirebaseStorage _storage;
+  FirebaseStorage get storage => _storage;
 
   /// Uploads a single file and yields progress.
   Stream<TaskSnapshot> uploadFile(TransferFile fileDesc, File localFile, String transferId) {

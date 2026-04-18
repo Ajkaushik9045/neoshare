@@ -45,6 +45,7 @@ app.*.map.json
 /android/app/release
 
 firebase_options.dart
-
+.claude
+.agents
 # Platform-specific build outputs
 

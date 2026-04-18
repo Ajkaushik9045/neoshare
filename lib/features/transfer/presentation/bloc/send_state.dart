@@ -26,7 +26,7 @@ class RecipientNotFound extends SendState {
 
 class FilesSelected extends SendState {
   const FilesSelected(this.files, {this.isMetered = false});
-  final List<PlatformFile> files;
+  final List<PickedFileInfo> files;
   final bool isMetered;
   @override List<Object?> get props => [files, isMetered];
 }

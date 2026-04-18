@@ -4,8 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:neoshare/firebase_options.dart';
 
 import 'package:go_router/go_router.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'core/di/service_locator.dart';
+import 'core/notifications/fcm_service.dart';
 import 'core/utils/app_logger.dart';
 import 'features/identity/presentation/bloc/identity_bloc.dart';
 
@@ -20,6 +22,9 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     AppLogger.success('Firebase initialized');
+
+    // Register FCM Background Handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     AppLogger.step('Setting up service locator');
     await setupServiceLocator();

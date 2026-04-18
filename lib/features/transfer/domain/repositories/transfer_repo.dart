@@ -13,22 +13,27 @@ abstract class TransferRepo {
   Future<Transfer> createPendingTransfer({
     required String transferId,
     required String senderId,
+    required String senderCode,
     required String recipientCode,
     required String recipientUid,
     required List<TransferFile> files,
   });
 
-  Future<void> updateTransferStatus(String transferId, String status);
+  Future<void> updateTransferStatus(String transferId, TransferStatus status);
 
   Stream<double> uploadFile(TransferFile fileDesc, File localFile, String transferId);
 
   Future<void> updateFileProgress(
     String transferId,
     String fileId,
-    int bytesUploaded,
-    String status, {
+    int? bytesUploaded,
+    int? bytesDownloaded,
+    FileStatus status, {
     String? sha256,
   });
 
   Stream<List<Transfer>> watchIncoming({required String receiverId});
+
+  /// Downloads either the specified file or all pending files of a transfer. Saves via Pigeon/MediaStore.
+  Stream<Transfer> downloadTransfer(String transferId, [String? specificFileId]);
 }

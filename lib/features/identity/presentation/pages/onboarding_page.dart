@@ -38,7 +38,7 @@ class OnboardingPage extends StatelessWidget {
             bottomBar: _BottomBarButton(
               text: 'Send Files',
               onPressed: () {
-                sl<GoRouter>().push('/send');
+                sl<GoRouter>().go('/send');
               },
             ),
           );

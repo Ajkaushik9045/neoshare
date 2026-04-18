@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/transfer_model.dart';
 import '../../domain/entities/transfer_file.dart';
+import '../../domain/entities/transfer.dart';
 
 /// Handles transfer metadata operations in Firestore.
 class FirestoreTransferDataSource {
@@ -12,6 +13,7 @@ class FirestoreTransferDataSource {
   Future<TransferModel> createTransfer({
     required String transferId,
     required String senderId,
+    required String senderCode,
     required String recipientCode,
     required String recipientUid,
     required List<TransferFile> files,
@@ -21,11 +23,12 @@ class FirestoreTransferDataSource {
     final expiresAt = now.add(const Duration(hours: 48));
 
     final transfer = TransferModel(
-      id: transferId,
+      transferId: transferId,
       senderId: senderId,
+      senderCode: senderCode,
       recipientCode: recipientCode,
       recipientUid: recipientUid,
-      status: 'pending',
+      status: TransferStatus.pending,
       createdAt: now,
       expiresAt: expiresAt,
       files: files,
@@ -35,17 +38,18 @@ class FirestoreTransferDataSource {
     return transfer;
   }
 
-  Future<void> updateTransferStatus(String transferId, String status) async {
+  Future<void> updateTransferStatus(String transferId, TransferStatus status) async {
     await _firestore.collection('transfers').doc(transferId).update({
-      'status': status,
+      'status': status.name,
     });
   }
 
   Future<void> updateFileProgress(
     String transferId,
     String fileId,
-    int bytesUploaded,
-    String status, {
+    int? bytesUploaded,
+    int? bytesDownloaded,
+    FileStatus status, {
     String? sha256,
   }) async {
     final docRef = _firestore.collection('transfers').doc(transferId);
@@ -60,8 +64,9 @@ class FirestoreTransferDataSource {
       final filesList = List<Map<String, dynamic>>.from(data['files'] ?? []);
       for (int i = 0; i < filesList.length; i++) {
         if (filesList[i]['fileId'] == fileId) {
-          filesList[i]['bytesUploaded'] = bytesUploaded;
-          filesList[i]['status'] = status;
+          if (bytesUploaded != null) filesList[i]['bytesUploaded'] = bytesUploaded;
+          if (bytesDownloaded != null) filesList[i]['bytesDownloaded'] = bytesDownloaded;
+          filesList[i]['status'] = status.name;
           if (sha256 != null) {
             filesList[i]['sha256'] = sha256;
           }

@@ -1,1 +1,42 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"neoshare-e2fa7","appId":"1:597397485046:android:7d5366d1405878f1b283d7","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"neoshare-e2fa7","configurations":{"android":"1:597397485046:android:7d5366d1405878f1b283d7","ios":"1:597397485046:ios:af7a585391e47c42b283d7","macos":"1:597397485046:ios:af7a585391e47c42b283d7","web":"1:597397485046:web:cfe48dbd70b9ee25b283d7","windows":"1:597397485046:web:911c249526123834b283d7"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "neoshare-e2fa7",
+          "appId": "1:597397485046:android:7d5366d1405878f1b283d7",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "neoshare-e2fa7",
+          "configurations": {
+            "android": "1:597397485046:android:7d5366d1405878f1b283d7",
+            "ios": "1:597397485046:ios:af7a585391e47c42b283d7",
+            "macos": "1:597397485046:ios:af7a585391e47c42b283d7",
+            "web": "1:597397485046:web:cfe48dbd70b9ee25b283d7",
+            "windows": "1:597397485046:web:911c249526123834b283d7"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}

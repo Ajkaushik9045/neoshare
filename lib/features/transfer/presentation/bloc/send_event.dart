@@ -14,7 +14,7 @@ class LookupRecipient extends SendEvent {
 
 class FilesChosen extends SendEvent {
   const FilesChosen(this.files);
-  final List<PlatformFile> files;
+  final List<PickedFileInfo> files;
   @override List<Object?> get props => [files];
 }
 

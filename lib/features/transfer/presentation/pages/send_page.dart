@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/service_locator.dart';
+import '../../../../core/platform/file_api.g.dart';
+import '../../../../core/utils/app_logger.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../../identity/data/datasources/local_identity_ds.dart';
 import '../../../../shared/platform/platform_action_button.dart';
@@ -44,12 +46,10 @@ class _SendPageState extends State<SendPage> {
                 title: "It's you",
                 message: state.reason,
               );
-              return;
+            } else {
+              AppScaffoldMessenger.showError(context, state.reason);
             }
-            if (context.mounted) AppScaffoldMessenger.showError(context, state.reason);
-          }
-
-          if (state is UploadFailed) {
+          } else if (state is UploadFailed) {
             if (state.reason.contains('500 MB')) {
               await AppPlatformDialog.showMessage(
                 context: context,
@@ -59,21 +59,28 @@ class _SendPageState extends State<SendPage> {
             } else {
               AppScaffoldMessenger.showError(context, state.reason);
             }
-          }
-
-          if (state is RecipientFound) {
+          } else if (state is RecipientFound) {
             AppScaffoldMessenger.showInfo(
               context,
               'Recipient found. Select files to send.',
             );
-            
-            final result = await fp.FilePicker.pickFiles(allowMultiple: true);
-            if (result != null && result.files.isNotEmpty && context.mounted) {
-              context.read<SendBloc>().add(FilesChosen(result.files));
+
+            AppLogger.step('Opening native file picker via Pigeon FileHostApi.pickFiles()');
+            List<PickedFileInfo> picked = [];
+            try {
+              picked = await FileHostApi().pickFiles();
+            } catch (e) {
+              AppLogger.error('Pigeon pickFiles() threw', data: e.toString());
+              if (context.mounted) AppScaffoldMessenger.showError(context, 'Could not open file picker.');
+              return;
             }
-          }
-          
-          if (state is FilesSelected && state.isMetered) {
+            AppLogger.success('Pigeon pickFiles() returned ${picked.length} file(s)');
+            if (!context.mounted) return;
+
+            if (picked.isNotEmpty) {
+              context.read<SendBloc>().add(FilesChosen(picked));
+            }
+          } else if (state is FilesSelected && state.isMetered) {
              final proceed = await showDialog<bool>(
                context: context,
                builder: (ctx) => AlertDialog(
@@ -85,14 +92,14 @@ class _SendPageState extends State<SendPage> {
                  ],
                ),
              );
-             if (proceed == true && context.mounted) {
+             if (!context.mounted) return;
+             
+             if (proceed == true) {
                context.read<SendBloc>().add(const UploadConfirmed());
              }
-          }
-          
-          if (state is UploadComplete) {
+          } else if (state is UploadComplete) {
             AppScaffoldMessenger.showInfo(context, 'Transfer completed!');
-            Navigator.of(context).pop();
+            context.go('/');
           }
         },
         builder: (context, state) {

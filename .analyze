@@ -1,0 +1,14 @@
+Analyzing neoshare...                                           
+
+warning • Duplicate import • lib/features/transfer/presentation/bloc/inbox_bloc.dart:12:8 • duplicate_import
+  error • The getter 'platform' isn't defined for the type 'FilePicker' • lib/features/transfer/presentation/bloc/inbox_bloc.dart:86:39 • undefined_getter
+  error • The getter 'platform' isn't defined for the type 'FilePicker' • lib/features/transfer/presentation/bloc/inbox_bloc.dart:115:39 • undefined_getter
+   info • Statements in a for should be enclosed in a block • lib/features/transfer/presentation/bloc/send_bloc.dart:80:32 • curly_braces_in_flow_control_structures
+warning • The value of the local variable 'activeDownloads' isn't used • lib/features/transfer/presentation/pages/inbox_page.dart:46:48 • unused_local_variable
+warning • The value of the local variable 'errors' isn't used • lib/features/transfer/presentation/pages/inbox_page.dart:46:72 • unused_local_variable
+warning • Unnecessary cast • lib/features/transfer/presentation/pages/send_page.dart:164:47 • unnecessary_cast
+warning • Unnecessary cast • lib/features/transfer/presentation/pages/send_page.dart:166:53 • unnecessary_cast
+warning • Unnecessary cast • lib/features/transfer/presentation/pages/send_page.dart:172:37 • unnecessary_cast
+   info • Unnecessary use of multiple underscores • lib/features/transfer/presentation/pages/send_page.dart:173:47 • unnecessary_underscores
+warning • Unnecessary cast • lib/features/transfer/presentation/pages/send_page.dart:175:38 • unnecessary_cast
+

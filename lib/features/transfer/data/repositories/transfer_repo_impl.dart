@@ -7,22 +7,32 @@ import '../../domain/entities/recipient.dart';
 import '../../domain/entities/transfer.dart';
 import '../../domain/entities/transfer_file.dart';
 import '../../domain/repositories/transfer_repo.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
 import '../datasources/firestore_transfer_ds.dart';
 import '../datasources/storage_ds.dart';
+import '../datasources/local_transfer_ds.dart';
+import '../models/transfer_model.dart';
+import '../../../../core/platform/file_api.g.dart';
 
 /// Concrete repository composing storage and Firestore data sources.
 class TransferRepoImpl implements TransferRepo {
   TransferRepoImpl({
     required StorageDataSource storageDataSource,
     required FirestoreTransferDataSource firestoreTransferDataSource,
+    required LocalTransferDataSource localTransferDataSource,
     required FirebaseFirestore firestore,
   })  : _storageDataSource = storageDataSource,
         _firestoreTransferDataSource = firestoreTransferDataSource,
-        _firestore = firestore;
+        _localTransferDataSource = localTransferDataSource,
+        _firestore = firestore,
+        _fileApi = FileHostApi();
 
   final StorageDataSource _storageDataSource;
   final FirestoreTransferDataSource _firestoreTransferDataSource;
+  final LocalTransferDataSource _localTransferDataSource;
   final FirebaseFirestore _firestore;
+  final FileHostApi _fileApi;
 
   @override
   Future<Recipient> validateRecipientCode({
@@ -65,6 +75,7 @@ class TransferRepoImpl implements TransferRepo {
   Future<Transfer> createPendingTransfer({
     required String transferId,
     required String senderId,
+    required String senderCode,
     required String recipientCode,
     required String recipientUid,
     required List<TransferFile> files,
@@ -72,6 +83,7 @@ class TransferRepoImpl implements TransferRepo {
     return _firestoreTransferDataSource.createTransfer(
       transferId: transferId,
       senderId: senderId,
+      senderCode: senderCode,
       recipientCode: recipientCode,
       recipientUid: recipientUid,
       files: files,
@@ -79,7 +91,7 @@ class TransferRepoImpl implements TransferRepo {
   }
 
   @override
-  Future<void> updateTransferStatus(String transferId, String status) async {
+  Future<void> updateTransferStatus(String transferId, TransferStatus status) async {
     return _firestoreTransferDataSource.updateTransferStatus(transferId, status);
   }
 
@@ -95,14 +107,16 @@ class TransferRepoImpl implements TransferRepo {
   Future<void> updateFileProgress(
     String transferId,
     String fileId,
-    int bytesUploaded,
-    String status, {
+    int? bytesUploaded,
+    int? bytesDownloaded,
+    FileStatus status, {
     String? sha256,
   }) async {
     return _firestoreTransferDataSource.updateFileProgress(
       transferId,
       fileId,
       bytesUploaded,
+      bytesDownloaded,
       status,
       sha256: sha256,
     );
@@ -111,5 +125,100 @@ class TransferRepoImpl implements TransferRepo {
   @override
   Stream<List<Transfer>> watchIncoming({required String receiverId}) {
     return _firestoreTransferDataSource.watchIncoming(receiverId: receiverId);
+  }
+
+  @override
+  Stream<Transfer> downloadTransfer(String transferId, [String? specificFileId]) async* {
+    if (specificFileId == null && _localTransferDataSource.isProcessed(transferId)) {
+      AppLogger.warning('Transfer $transferId already fully processed, skipping.', data: null);
+      return;
+    }
+
+    final docRef = _firestore.collection('transfers').doc(transferId);
+    final doc = await docRef.get();
+    final model = TransferModel.fromDoc(doc);
+
+    final filesToDownload = model.files.where((f) {
+      if (specificFileId != null) return f.fileId == specificFileId;
+      return true;
+    }).toList();
+
+    // ── Storage space check ──────────────────────────────────────────────────
+    final totalSize = filesToDownload.fold<int>(0, (acc, f) => acc + f.sizeBytes);
+    try {
+      final freeSpace = await _fileApi.getFreeSpace();
+      if (freeSpace < totalSize) {
+        throw Exception(
+          'Not enough storage space. '
+          'Need ${totalSize ~/ 1024 ~/ 1024} MB but only ${freeSpace ~/ 1024 ~/ 1024} MB available.',
+        );
+      }
+    } catch (e) {
+      if (e.toString().contains('Not enough storage')) rethrow;
+      // Pigeon channel unavailable on this platform — continue without check.
+    }
+
+    // ── Temp directory: always app-writable, Firebase can create files here ──
+    // We CANNOT pass user-selected SAF paths directly to Firebase writeToFile()
+    // because on Android 10+ those are content URIs / scoped paths.
+    final tempDir = Directory.systemTemp.createTempSync('neoshare_dl_');
+
+    for (final fileModel in filesToDownload) {
+      // Step 1: Download to temp (unconditionally writable)
+      final tempFile = File('${tempDir.path}/${fileModel.fileId}.tmp');
+
+      try {
+        await updateFileProgress(transferId, fileModel.fileId, null, 0, FileStatus.downloading);
+
+        final downloadTask = _storageDataSource.storage
+            .ref(fileModel.storagePath)
+            .writeToFile(tempFile);
+
+        await for (final snapshot in downloadTask.snapshotEvents) {
+          if (snapshot.state == TaskState.error) {
+            throw Exception('Firebase Storage error: ${fileModel.name}');
+          }
+        }
+
+        if (!tempFile.existsSync() || tempFile.lengthSync() == 0) {
+          throw Exception('Downloaded file is empty or missing: ${fileModel.name}');
+        }
+
+        // Step 2: Save via Pigeon → MediaStore (Android) / Documents (iOS)
+        // This is the ONLY reliable cross-platform way to write to public storage.
+        AppLogger.step('Pigeon saveToDownloads() → ${fileModel.name} (${fileModel.mimeType})');
+        try {
+          final savedPath = await _fileApi.saveToDownloads(
+            tempFile.path,
+            fileModel.mimeType,
+            fileModel.name,
+          );
+          AppLogger.success('Pigeon saveToDownloads: ${fileModel.name} → $savedPath');
+        } catch (pigeonErr) {
+          // Non-fatal: file is still in temp, but user may not see it in Downloads.
+          AppLogger.warning('Pigeon saveToDownloads failed for ${fileModel.name}', data: pigeonErr.toString());
+        }
+        await tempFile.delete();
+
+        await updateFileProgress(
+            transferId, fileModel.fileId, null, fileModel.sizeBytes, FileStatus.complete);
+        AppLogger.success('Download complete: ${fileModel.name}');
+      } catch (e) {
+        AppLogger.error('Download failed: ${fileModel.name}', data: e.toString());
+        await updateFileProgress(transferId, fileModel.fileId, null, 0, FileStatus.failed);
+        if (tempFile.existsSync()) await tempFile.delete();
+      }
+    }
+
+    // Clean up temp dir (any stragglers)
+    try { tempDir.deleteSync(recursive: true); } catch (_) {}
+
+    final updatedModel = TransferModel.fromDoc(await docRef.get());
+
+    if (specificFileId == null) {
+      await _localTransferDataSource.markProcessed(transferId);
+    }
+
+    yield updatedModel;
   }
 }

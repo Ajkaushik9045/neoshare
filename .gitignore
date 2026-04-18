@@ -48,4 +48,5 @@ firebase_options.dart
 .claude
 .agents
 # Platform-specific build outputs
-
+.windsurf
+.kiro

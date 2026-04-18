@@ -8,8 +8,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../notifications/fcm_service.dart';
+import '../notifications/notification_permission_service.dart';
+import '../platform/foreground_service_bridge.dart';
+import '../platform/transfer_api.g.dart';
 import '../routing/app_router.dart';
 import '../utils/app_logger.dart';
+import '../utils/battery_monitor.dart';
 import '../../features/identity/data/datasources/firestore_identity_ds.dart';
 import '../../features/identity/data/datasources/local_identity_ds.dart';
 import '../../features/identity/data/repositories/identity_repo_impl.dart';
@@ -39,6 +43,14 @@ Future<void> setupServiceLocator() async {
   AppLogger.success('Hive initialized and boxes opened');
 
   sl
+    ..registerLazySingleton<BatteryMonitor>(() => BatteryMonitor())
+    ..registerLazySingleton<NotificationPermissionService>(
+      () => NotificationPermissionService(),
+    )
+    ..registerLazySingleton<TransferServiceHostApi>(() => TransferServiceHostApi())
+    ..registerLazySingleton<ForegroundServiceBridge>(
+      () => ForegroundServiceBridge(sl<TransferServiceHostApi>()),
+    )
     ..registerLazySingleton<GoRouter>(() => createAppRouter())
     ..registerLazySingleton<FirebaseAuth>(() => FirebaseAuth.instance)
     ..registerLazySingleton<FirebaseFirestore>(() => FirebaseFirestore.instance)
@@ -96,7 +108,7 @@ Future<void> setupServiceLocator() async {
       () => IdentityBloc(sl<ProvisionIdentity>()),
     )
     ..registerFactory<SendBloc>(
-      () => SendBloc(sl<TransferRepo>()),
+      () => SendBloc(sl<TransferRepo>(), sl<ForegroundServiceBridge>()),
     )
     ..registerFactory<InboxBloc>(
       () => InboxBloc(

@@ -13,7 +13,7 @@ import '../datasources/firestore_transfer_ds.dart';
 import '../datasources/storage_ds.dart';
 import '../datasources/local_transfer_ds.dart';
 import '../models/transfer_model.dart';
-import '../../../../core/platform/file_api.g.dart';
+import '../../../../core/platform/transfer_api.g.dart';
 
 /// Concrete repository composing storage and Firestore data sources.
 class TransferRepoImpl implements TransferRepo {

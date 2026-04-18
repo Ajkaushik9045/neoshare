@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/di/service_locator.dart';
-import '../../../../core/platform/file_api.g.dart';
+import '../../../../core/notifications/notification_permission_service.dart';
+import '../../../../core/platform/transfer_api.g.dart';
+import '../../../../core/utils/battery_monitor.dart';
+import '../../../../shared/widgets/battery_warning_banner.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../../identity/data/datasources/local_identity_ds.dart';
@@ -26,6 +30,13 @@ class SendPage extends StatefulWidget {
 
 class _SendPageState extends State<SendPage> {
   final TextEditingController _recipientCodeController = TextEditingController();
+  late NotificationPermissionStatus _permissionStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _permissionStatus = sl<NotificationPermissionService>().lastStatus;
+  }
 
   @override
   void dispose() {
@@ -109,11 +120,26 @@ class _SendPageState extends State<SendPage> {
           
           return PlatformScaffold(
             title: 'NeoShare',
-            body: Padding(
+            body: StreamBuilder<BatteryWarningState>(
+              stream: sl<BatteryMonitor>().warningStream,
+              initialData: BatteryWarningState.none,
+              builder: (context, batterySnapshot) {
+                final showBatteryWarning =
+                    batterySnapshot.data != BatteryWarningState.none;
+                return Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (showBatteryWarning) const BatteryWarningBanner(),
+                  if (_permissionStatus == NotificationPermissionStatus.denied)
+                    _NotificationDeniedBanner(
+                      onDismiss: () => setState(() {
+                        _permissionStatus = NotificationPermissionStatus.granted;
+                      }),
+                    ),
+                  if (_permissionStatus == NotificationPermissionStatus.permanentlyDenied)
+                    const _NotificationPermanentlyDeniedBanner(),
                   const SizedBox(height: 10),
                   Text(
                     'Send Files',
@@ -219,6 +245,8 @@ class _SendPageState extends State<SendPage> {
                     ),
                 ],
               ),
+            );
+              },
             ),
             bottomBar: SafeArea(
               top: false,
@@ -264,5 +292,51 @@ class _SendPageState extends State<SendPage> {
             recipientShortCode: normalizedRecipientCode,
           ),
         );
+  }
+}
+
+/// Banner shown when notification permission was denied.
+class _NotificationDeniedBanner extends StatelessWidget {
+  const _NotificationDeniedBanner({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialBanner(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      content: const Text(
+        'Upload progress notifications will not be shown and background uploads may be interrupted.',
+      ),
+      leading: const Icon(Icons.notifications_off_outlined, color: Colors.orange),
+      actions: [
+        TextButton(
+          onPressed: onDismiss,
+          child: const Text('Dismiss'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Banner shown when notification permission is permanently denied.
+class _NotificationPermanentlyDeniedBanner extends StatelessWidget {
+  const _NotificationPermanentlyDeniedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialBanner(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      content: const Text(
+        'Upload progress notifications are blocked. Enable them in system settings to stay informed during transfers.',
+      ),
+      leading: const Icon(Icons.notifications_off, color: Colors.red),
+      actions: [
+        TextButton(
+          onPressed: () => openAppSettings(),
+          child: const Text('Open Settings'),
+        ),
+      ],
+    );
   }
 }

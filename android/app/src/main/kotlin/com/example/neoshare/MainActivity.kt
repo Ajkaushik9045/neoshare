@@ -9,11 +9,12 @@ import android.os.StatFs
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import java.io.File
 
-class MainActivity : FlutterActivity(), FileHostApi {
+class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
 
     private var pendingPickCallback: ((Result<List<PickedFileInfo>>) -> Unit)? = null
 
@@ -26,6 +27,32 @@ class MainActivity : FlutterActivity(), FileHostApi {
         super.configureFlutterEngine(flutterEngine)
         FileHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         android.util.Log.i(TAG, "FileHostApi registered on binary messenger")
+        TransferServiceHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
+        android.util.Log.i(TAG, "TransferServiceHostApi registered on binary messenger")
+    }
+
+    // ─── TransferServiceHostApi ────────────────────────────────────────────────
+
+    override fun startUploadService(transferId: String) {
+        android.util.Log.i(TAG, "startUploadService transferId=$transferId")
+        val intent = Intent(this, TransferForegroundService::class.java).apply {
+            putExtra(TransferForegroundService.EXTRA_TRANSFER_ID, transferId)
+            putExtra(TransferForegroundService.EXTRA_ACTION, TransferForegroundService.ACTION_START)
+        }
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    override fun stopUploadService() {
+        android.util.Log.i(TAG, "stopUploadService called")
+        val intent = Intent(this, TransferForegroundService::class.java).apply {
+            putExtra(TransferForegroundService.EXTRA_ACTION, TransferForegroundService.ACTION_STOP)
+        }
+        startService(intent)
+    }
+
+    override fun updateProgress(percent: Long) {
+        android.util.Log.d(TAG, "updateProgress $percent%")
+        TransferForegroundService.updateProgress(this, percent.toInt())
     }
 
     // ─── pickFiles ─────────────────────────────────────────────────────────────

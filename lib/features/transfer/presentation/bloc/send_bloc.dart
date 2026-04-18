@@ -5,7 +5,8 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/platform/file_api.g.dart';
+import '../../../../core/platform/transfer_api.g.dart';
+import '../../../../core/platform/foreground_service_bridge.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../../../core/utils/crypto_util.dart';
 import '../../../../core/utils/short_code_util.dart';
@@ -20,7 +21,7 @@ part 'send_state.dart';
 /// BLoC responsible for send transfer interactions.
 /// File selection is handled exclusively via Pigeon [FileHostApi.pickFiles()].
 class SendBloc extends Bloc<SendEvent, SendState> {
-  SendBloc(this._transferRepo) : super(const SendIdle()) {
+  SendBloc(this._transferRepo, this._bridge) : super(const SendIdle()) {
     on<LookupRecipient>(_onLookupRecipient);
     on<FilesChosen>(_onFilesChosen);
     on<UploadConfirmed>(_onUploadConfirmed);
@@ -30,6 +31,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
   }
 
   final TransferRepo _transferRepo;
+  final ForegroundServiceBridge _bridge;
   final Uuid _uuid = const Uuid();
 
   Recipient? _resolvedRecipient;
@@ -102,6 +104,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     emit(Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: 0.0));
 
     try {
+      await _bridge.startUpload(_transferId!);
       final tFiles = <TransferFile>[];
       final fileIdMap = <String, String>{};
 
@@ -147,12 +150,14 @@ class SendBloc extends Bloc<SendEvent, SendState> {
       await Future.wait(uploadFutures);
       await _transferRepo.updateTransferStatus(_transferId!, TransferStatus.complete);
       AppLogger.success('All files uploaded for transfer $_transferId');
+      await _bridge.stopUpload();
       add(const UploadFinished());
     } catch (e) {
       AppLogger.error('Upload failed for transfer $_transferId', data: e.toString());
       if (_transferId != null) {
         await _transferRepo.updateTransferStatus(_transferId!, TransferStatus.failed);
       }
+      await _bridge.stopUpload();
       add(UploadErrored('Transfer failed: $e'));
     }
   }
@@ -207,6 +212,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     _fileProgressMap.forEach((_, v) => total += v);
     total = total / _fileProgressMap.length;
 
+    _bridge.updateProgress((total * 100).round());
     emit(Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: total));
   }
 

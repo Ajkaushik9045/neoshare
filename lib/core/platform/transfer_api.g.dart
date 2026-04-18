@@ -34,6 +34,16 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
+
+List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty = false}) {
+  if (empty) {
+    return <Object?>[];
+  }
+  if (error == null) {
+    return <Object?>[result];
+  }
+  return <Object?>[error.code, error.message, error.details];
+}
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -214,8 +224,9 @@ class FileHostApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<PickedFileInfo>();
   }
 
-  /// Save a file from [tempPath] to the public Downloads folder via MediaStore (Android)
-  /// or the app's Documents directory (iOS). Returns the final saved path / content URI.
+  /// Save a file from [tempPath] to the public Downloads folder via MediaStore
+  /// (Android) or the app's Documents directory (iOS).
+  /// Returns the final saved path / content URI.
   Future<String> saveToDownloads(String tempPath, String mimeType, String fileName) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.neoshare.FileHostApi.saveToDownloads$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -253,5 +264,110 @@ class FileHostApi {
     )
     ;
     return pigeonVar_replyValue! as int;
+  }
+}
+
+/// Flutter → Android: control the TransferForegroundService.
+class TransferServiceHostApi {
+  /// Constructor for [TransferServiceHostApi].  The [binaryMessenger] named argument is
+  /// available for dependency injection.  If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  TransferServiceHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  /// Start the foreground service for the given transfer.
+  Future<void> startUploadService(String transferId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.neoshare.TransferServiceHostApi.startUploadService$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[transferId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Stop the foreground service (upload finished or cancelled).
+  Future<void> stopUploadService() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.neoshare.TransferServiceHostApi.stopUploadService$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Update the persistent notification progress (0–100).
+  Future<void> updateProgress(int percent) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.neoshare.TransferServiceHostApi.updateProgress$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[percent]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+}
+
+/// Android → Flutter: service lifecycle callbacks.
+abstract class TransferServiceFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  /// Called when the OS restarts the service after killing it under memory pressure.
+  void onServiceRestarted(String transferId);
+
+  static void setUp(TransferServiceFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.neoshare.TransferServiceFlutterApi.onServiceRestarted$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_transferId = args[0]! as String;
+          try {
+            api.onServiceRestarted(arg_transferId);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
   }
 }

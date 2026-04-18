@@ -13,7 +13,10 @@ import io.flutter.plugin.common.StandardMethodCodec
 import io.flutter.plugin.common.StandardMessageCodec
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-private object FileApiPigeonUtils {
+private object TransferApiPigeonUtils {
+
+  fun createConnectionError(channelName: String): FlutterError {
+    return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
@@ -229,19 +232,19 @@ data class PickedFileInfo (
       return true
     }
     val other = other as PickedFileInfo
-    return FileApiPigeonUtils.deepEquals(this.path, other.path) && FileApiPigeonUtils.deepEquals(this.name, other.name) && FileApiPigeonUtils.deepEquals(this.sizeBytes, other.sizeBytes) && FileApiPigeonUtils.deepEquals(this.mimeType, other.mimeType)
+    return TransferApiPigeonUtils.deepEquals(this.path, other.path) && TransferApiPigeonUtils.deepEquals(this.name, other.name) && TransferApiPigeonUtils.deepEquals(this.sizeBytes, other.sizeBytes) && TransferApiPigeonUtils.deepEquals(this.mimeType, other.mimeType)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
-    result = 31 * result + FileApiPigeonUtils.deepHash(this.path)
-    result = 31 * result + FileApiPigeonUtils.deepHash(this.name)
-    result = 31 * result + FileApiPigeonUtils.deepHash(this.sizeBytes)
-    result = 31 * result + FileApiPigeonUtils.deepHash(this.mimeType)
+    result = 31 * result + TransferApiPigeonUtils.deepHash(this.path)
+    result = 31 * result + TransferApiPigeonUtils.deepHash(this.name)
+    result = 31 * result + TransferApiPigeonUtils.deepHash(this.sizeBytes)
+    result = 31 * result + TransferApiPigeonUtils.deepHash(this.mimeType)
     return result
   }
 }
-private open class FileApiPigeonCodec : StandardMessageCodec() {
+private open class TransferApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
       129.toByte() -> {
@@ -272,8 +275,9 @@ interface FileHostApi {
    */
   fun pickFiles(callback: (Result<List<PickedFileInfo>>) -> Unit)
   /**
-   * Save a file from [tempPath] to the public Downloads folder via MediaStore (Android)
-   * or the app's Documents directory (iOS). Returns the final saved path / content URI.
+   * Save a file from [tempPath] to the public Downloads folder via MediaStore
+   * (Android) or the app's Documents directory (iOS).
+   * Returns the final saved path / content URI.
    */
   fun saveToDownloads(tempPath: String, mimeType: String, fileName: String, callback: (Result<String>) -> Unit)
   /** Returns available storage space in bytes. */
@@ -282,7 +286,7 @@ interface FileHostApi {
   companion object {
     /** The codec used by FileHostApi. */
     val codec: MessageCodec<Any?> by lazy {
-      FileApiPigeonCodec()
+      TransferApiPigeonCodec()
     }
     /** Sets up an instance of `FileHostApi` to handle messages through the `binaryMessenger`. */
     @JvmOverloads
@@ -295,10 +299,10 @@ interface FileHostApi {
             api.pickFiles{ result: Result<List<PickedFileInfo>> ->
               val error = result.exceptionOrNull()
               if (error != null) {
-                reply.reply(FileApiPigeonUtils.wrapError(error))
+                reply.reply(TransferApiPigeonUtils.wrapError(error))
               } else {
                 val data = result.getOrNull()
-                reply.reply(FileApiPigeonUtils.wrapResult(data))
+                reply.reply(TransferApiPigeonUtils.wrapResult(data))
               }
             }
           }
@@ -317,10 +321,10 @@ interface FileHostApi {
             api.saveToDownloads(tempPathArg, mimeTypeArg, fileNameArg) { result: Result<String> ->
               val error = result.exceptionOrNull()
               if (error != null) {
-                reply.reply(FileApiPigeonUtils.wrapError(error))
+                reply.reply(TransferApiPigeonUtils.wrapError(error))
               } else {
                 val data = result.getOrNull()
-                reply.reply(FileApiPigeonUtils.wrapResult(data))
+                reply.reply(TransferApiPigeonUtils.wrapResult(data))
               }
             }
           }
@@ -335,10 +339,10 @@ interface FileHostApi {
             api.getFreeSpace{ result: Result<Long> ->
               val error = result.exceptionOrNull()
               if (error != null) {
-                reply.reply(FileApiPigeonUtils.wrapError(error))
+                reply.reply(TransferApiPigeonUtils.wrapError(error))
               } else {
                 val data = result.getOrNull()
-                reply.reply(FileApiPigeonUtils.wrapResult(data))
+                reply.reply(TransferApiPigeonUtils.wrapResult(data))
               }
             }
           }
@@ -346,6 +350,114 @@ interface FileHostApi {
           channel.setMessageHandler(null)
         }
       }
+    }
+  }
+}
+/**
+ * Flutter → Android: control the TransferForegroundService.
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface TransferServiceHostApi {
+  /** Start the foreground service for the given transfer. */
+  fun startUploadService(transferId: String)
+  /** Stop the foreground service (upload finished or cancelled). */
+  fun stopUploadService()
+  /** Update the persistent notification progress (0–100). */
+  fun updateProgress(percent: Long)
+
+  companion object {
+    /** The codec used by TransferServiceHostApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      TransferApiPigeonCodec()
+    }
+    /** Sets up an instance of `TransferServiceHostApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: TransferServiceHostApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.neoshare.TransferServiceHostApi.startUploadService$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val transferIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.startUploadService(transferIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              TransferApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.neoshare.TransferServiceHostApi.stopUploadService$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUploadService()
+              listOf(null)
+            } catch (exception: Throwable) {
+              TransferApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.neoshare.TransferServiceHostApi.updateProgress$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val percentArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              api.updateProgress(percentArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              TransferApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/**
+ * Android → Flutter: service lifecycle callbacks.
+ *
+ * Generated class from Pigeon that represents Flutter messages that can be called from Kotlin.
+ */
+class TransferServiceFlutterApi(private val binaryMessenger: BinaryMessenger, private val messageChannelSuffix: String = "") {
+  companion object {
+    /** The codec used by TransferServiceFlutterApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      TransferApiPigeonCodec()
+    }
+  }
+  /** Called when the OS restarts the service after killing it under memory pressure. */
+  fun onServiceRestarted(transferIdArg: String, callback: (Result<Unit>) -> Unit)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    val channelName = "dev.flutter.pigeon.neoshare.TransferServiceFlutterApi.onServiceRestarted$separatedMessageChannelSuffix"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(transferIdArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else {
+          callback(Result.success(Unit))
+        }
+      } else {
+        callback(Result.failure(TransferApiPigeonUtils.createConnectionError(channelName)))
+      } 
     }
   }
 }

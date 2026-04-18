@@ -8,6 +8,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'core/di/service_locator.dart';
 import 'core/notifications/fcm_service.dart';
+import 'core/notifications/notification_permission_service.dart';
 import 'core/utils/app_logger.dart';
 import 'features/identity/presentation/bloc/identity_bloc.dart';
 
@@ -29,6 +30,10 @@ void main() async {
     AppLogger.step('Setting up service locator');
     await setupServiceLocator();
     AppLogger.success('Service locator configured');
+
+    AppLogger.step('Requesting notification permission');
+    await sl<NotificationPermissionService>().requestIfNeeded();
+    AppLogger.success('Notification permission check complete');
 
     runApp(const NeoShareApp());
     AppLogger.success('NeoShare app launched');

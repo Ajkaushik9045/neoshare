@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:neoshare/firebase_options.dart';
 
+import 'package:go_router/go_router.dart';
+
 import 'core/di/service_locator.dart';
 import 'core/utils/app_logger.dart';
 import 'features/identity/presentation/bloc/identity_bloc.dart';
-import 'features/identity/presentation/pages/onboarding_page.dart';
 
 /// Application bootstrap for NeoShare.
 void main() async {
@@ -44,7 +45,7 @@ class NeoShareApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider<IdentityBloc>(
       create: (_) => sl<IdentityBloc>()..add(const IdentityProvisionRequested()),
-      child: MaterialApp(
+      child: MaterialApp.router(
         title: 'NeoShare',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
@@ -66,7 +67,7 @@ class NeoShareApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const OnboardingPage(),
+        routerConfig: sl<GoRouter>(),
       ),
     );
   }

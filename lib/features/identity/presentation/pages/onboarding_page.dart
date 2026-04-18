@@ -2,11 +2,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../../../core/di/service_locator.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../../../shared/platform/platform_action_button.dart';
 import '../../../../shared/platform/platform_scaffold.dart';
 import '../../../../shared/widgets/app_scaffold_messenger.dart';
-import '../../../transfer/presentation/pages/send_page.dart';
 import '../bloc/identity_bloc.dart';
 
 /// Single-screen onboarding that provisions and displays the user's short code.
@@ -36,11 +38,7 @@ class OnboardingPage extends StatelessWidget {
             bottomBar: _BottomBarButton(
               text: 'Send Files',
               onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SendPage(),
-                  ),
-                );
+                sl<GoRouter>().push('/send');
               },
             ),
           );

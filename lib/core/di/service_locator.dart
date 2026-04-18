@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../routing/app_router.dart';
 import '../utils/app_logger.dart';
 import '../../features/identity/data/datasources/firestore_identity_ds.dart';
 import '../../features/identity/data/datasources/local_identity_ds.dart';
@@ -29,6 +31,7 @@ Future<void> setupServiceLocator() async {
   AppLogger.success('Hive initialized and identity box opened');
 
   sl
+    ..registerLazySingleton<GoRouter>(() => createAppRouter())
     ..registerLazySingleton<FirebaseAuth>(() => FirebaseAuth.instance)
     ..registerLazySingleton<FirebaseFirestore>(() => FirebaseFirestore.instance)
     ..registerLazySingleton<FirebaseStorage>(() => FirebaseStorage.instance)

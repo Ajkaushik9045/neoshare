@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/service_locator.dart';
+import '../../../../core/notifications/fcm_service.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../../../shared/platform/platform_action_button.dart';
 import '../../../../shared/platform/platform_scaffold.dart';
@@ -21,6 +22,9 @@ class OnboardingPage extends StatelessWidget {
       listener: (context, state) {
         if (state is IdentityError) {
           AppScaffoldMessenger.showError(context, state.message);
+        }
+        if (state is IdentityProvisioned) {
+          sl<FcmService>().initialize(state.user.shortCode);
         }
       },
       builder: (context, state) {

@@ -60,6 +60,7 @@ Future<void> setupServiceLocator() async {
       () => FcmService(
         messaging: sl<FirebaseMessaging>(),
         firestore: sl<FirebaseFirestore>(),
+        router: sl<GoRouter>(),
       ),
     )
     ..registerLazySingleton<LocalIdentityDataSource>(

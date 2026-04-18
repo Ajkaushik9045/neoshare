@@ -1,9 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:neoshare/firebase_options.dart';
-
 import 'package:go_router/go_router.dart';
+import 'package:neoshare/firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'core/di/service_locator.dart';
@@ -24,8 +23,12 @@ void main() async {
     );
     AppLogger.success('Firebase initialized');
 
-    // Register FCM Background Handler
+    // Register FCM background handler exactly once at startup.
+    // Must be called before runApp and before any isolate is spawned.
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Initialise local notifications (plugin must be ready before runApp)
+    await initLocalNotifications();
 
     AppLogger.step('Setting up service locator');
     await setupServiceLocator();
@@ -54,7 +57,8 @@ class NeoShareApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<IdentityBloc>(
-      create: (_) => sl<IdentityBloc>()..add(const IdentityProvisionRequested()),
+      create: (_) =>
+          sl<IdentityBloc>()..add(const IdentityProvisionRequested()),
       child: MaterialApp.router(
         title: 'NeoShare',
         debugShowCheckedModeBanner: false,
@@ -85,10 +89,7 @@ class NeoShareApp extends StatelessWidget {
 
 /// Fallback UI shown when startup fails before normal app rendering.
 class BootstrapErrorApp extends StatelessWidget {
-  const BootstrapErrorApp({
-    required this.errorMessage,
-    super.key,
-  });
+  const BootstrapErrorApp({required this.errorMessage, super.key});
 
   final String errorMessage;
 

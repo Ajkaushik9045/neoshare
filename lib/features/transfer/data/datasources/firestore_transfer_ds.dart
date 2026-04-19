@@ -38,7 +38,10 @@ class FirestoreTransferDataSource {
     return transfer;
   }
 
-  Future<void> updateTransferStatus(String transferId, TransferStatus status) async {
+  Future<void> updateTransferStatus(
+    String transferId,
+    TransferStatus status,
+  ) async {
     await _firestore.collection('transfers').doc(transferId).update({
       'status': status.name,
     });
@@ -53,7 +56,7 @@ class FirestoreTransferDataSource {
     String? sha256,
   }) async {
     final docRef = _firestore.collection('transfers').doc(transferId);
-    
+
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
       if (!snapshot.exists) return;
@@ -64,8 +67,12 @@ class FirestoreTransferDataSource {
       final filesList = List<Map<String, dynamic>>.from(data['files'] ?? []);
       for (int i = 0; i < filesList.length; i++) {
         if (filesList[i]['fileId'] == fileId) {
-          if (bytesUploaded != null) filesList[i]['bytesUploaded'] = bytesUploaded;
-          if (bytesDownloaded != null) filesList[i]['bytesDownloaded'] = bytesDownloaded;
+          if (bytesUploaded != null) {
+            filesList[i]['bytesUploaded'] = bytesUploaded;
+          }
+          if (bytesDownloaded != null) {
+            filesList[i]['bytesDownloaded'] = bytesDownloaded;
+          }
           filesList[i]['status'] = status.name;
           if (sha256 != null) {
             filesList[i]['sha256'] = sha256;
@@ -78,15 +85,18 @@ class FirestoreTransferDataSource {
     });
   }
 
-  /// Streams incoming transfer metadata for a receiver.
+  /// Streams incoming transfer metadata for a receiver, newest first.
   Stream<List<TransferModel>> watchIncoming({required String receiverId}) {
     return _firestore
         .collection('transfers')
         .where('recipientUid', isEqualTo: receiverId)
         .where('status', isNotEqualTo: 'expired')
+        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TransferModel.fromJson(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => TransferModel.fromJson(doc.data(), doc.id))
+              .toList(),
+        );
   }
 }

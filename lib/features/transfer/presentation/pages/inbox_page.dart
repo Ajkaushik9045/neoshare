@@ -26,25 +26,29 @@ class _InboxView extends StatelessWidget {
       appBar: AppBar(title: const Text('Inbox')),
       body: BlocBuilder<InboxBloc, InboxState>(
         builder: (context, state) => switch (state) {
-          InboxInitial() || InboxLoading() =>
-            const Center(child: CircularProgressIndicator()),
+          InboxInitial() ||
+          InboxLoading() => const Center(child: CircularProgressIndicator()),
 
           InboxError(:final message) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
-                  const SizedBox(height: 12),
-                  Text(message, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () =>
-                        context.read<InboxBloc>().add(const InboxStarted()),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: Colors.redAccent,
+                ),
+                const SizedBox(height: 12),
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () =>
+                      context.read<InboxBloc>().add(const InboxStarted()),
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
+          ),
 
           InboxLoaded(transfers: final transfers) when transfers.isEmpty =>
             const Center(
@@ -53,7 +57,10 @@ class _InboxView extends StatelessWidget {
                 children: [
                   Icon(Icons.inbox_outlined, size: 64, color: Colors.grey),
                   SizedBox(height: 16),
-                  Text('No incoming transfers', style: TextStyle(color: Colors.grey)),
+                  Text(
+                    'No incoming transfers',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ],
               ),
             ),
@@ -102,6 +109,17 @@ class _TransferCard extends StatelessWidget {
   bool get _allSaved => savedTransferIds.contains(transfer.transferId);
   bool get _batchActive => activeDownloads.contains(transfer.transferId);
 
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -116,11 +134,23 @@ class _TransferCard extends StatelessWidget {
               children: [
                 const Icon(Icons.download_for_offline_outlined, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  'From: ${transfer.senderCode}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'From: ${transfer.senderCode}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        _formatDate(transfer.createdAt),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.black45),
+                      ),
+                    ],
+                  ),
                 ),
-                const Spacer(),
                 _BatchDownloadWidget(
                   transfer: transfer,
                   allSaved: _allSaved,
@@ -133,7 +163,9 @@ class _TransferCard extends StatelessWidget {
             if (_batchActive) ...[
               const SizedBox(height: 8),
               LinearProgressIndicator(
-                value: transfer.totalProgress > 0 ? transfer.totalProgress : null,
+                value: transfer.totalProgress > 0
+                    ? transfer.totalProgress
+                    : null,
               ),
               const SizedBox(height: 4),
               Text(
@@ -145,19 +177,27 @@ class _TransferCard extends StatelessWidget {
             const Divider(height: 20),
 
             // ── Per-file rows ──────────────────────────────────────────
-            ...transfer.files.map((f) => _FileRow(
-                  file: f,
-                  transferId: transfer.transferId,
-                  isSaved: savedFileIds.contains(f.fileId),
-                  isActive: activeDownloads.contains('${transfer.transferId}_${f.fileId}'),
-                )),
+            ...transfer.files.map(
+              (f) => _FileRow(
+                file: f,
+                transferId: transfer.transferId,
+                isSaved: savedFileIds.contains(f.fileId),
+                isActive: activeDownloads.contains(
+                  '${transfer.transferId}_${f.fileId}',
+                ),
+              ),
+            ),
 
             // ── Error ──────────────────────────────────────────────────
             if (error != null) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Colors.orange,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -208,9 +248,8 @@ class _BatchDownloadWidget extends StatelessWidget {
     return TextButton.icon(
       icon: const Icon(Icons.download_rounded, size: 18),
       label: const Text('Save All'),
-      onPressed: () => context.read<InboxBloc>().add(
-            DownloadRequested(transfer.transferId),
-          ),
+      onPressed: () =>
+          context.read<InboxBloc>().add(DownloadRequested(transfer.transferId)),
     );
   }
 }
@@ -273,8 +312,8 @@ class _FileRow extends StatelessWidget {
               child: IconButton(
                 icon: const Icon(Icons.download_rounded, size: 22),
                 onPressed: () => context.read<InboxBloc>().add(
-                      DownloadFileRequested(transferId, file.fileId),
-                    ),
+                  DownloadFileRequested(transferId, file.fileId),
+                ),
               ),
             ),
         ],
@@ -287,7 +326,8 @@ class _FileRow extends StatelessWidget {
     if (mimeType.startsWith('video/')) return Icons.videocam_outlined;
     if (mimeType.startsWith('audio/')) return Icons.audiotrack_outlined;
     if (mimeType.contains('pdf')) return Icons.picture_as_pdf_outlined;
-    if (mimeType.contains('zip') || mimeType.contains('archive')) return Icons.folder_zip_outlined;
+    if (mimeType.contains('zip') || mimeType.contains('archive'))
+      return Icons.folder_zip_outlined;
     return Icons.insert_drive_file_outlined;
   }
 }

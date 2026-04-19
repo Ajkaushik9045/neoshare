@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mime/mime.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/platform/transfer_api.g.dart';
@@ -70,24 +71,51 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     AppLogger.step('Pigeon pickFiles returned ${event.files.length} file(s)');
 
     const maxBytes = 500 * 1024 * 1024;
+    final validated = <PickedFileInfo>[];
+
     for (final file in event.files) {
-      AppLogger.step('Pigeon file: ${file.name} | ${file.sizeBytes} bytes | ${file.mimeType}');
+      AppLogger.step(
+        'Pigeon file: ${file.name} | ${file.sizeBytes} bytes | ${file.mimeType}',
+      );
+
+      // Reject zero-byte files — nothing to upload
+      if (file.sizeBytes == 0) {
+        AppLogger.warning('Skipping zero-byte file: ${file.name}');
+        emit(UploadFailed('"${file.name}" is empty and cannot be sent.'));
+        return;
+      }
+
       if (file.sizeBytes > maxBytes) {
         emit(const UploadFailed('One or more files exceed the 500 MB limit.'));
         return;
       }
+
+      // Resolve MIME: prefer system value, fall back to mime package,
+      // then octet-stream for extensionless/unknown files.
+      final resolvedMime = _resolveMimeType(file.mimeType, file.name);
+      AppLogger.step('MIME resolved: ${file.name} → $resolvedMime');
+
+      validated.add(
+        PickedFileInfo(
+          path: file.path,
+          name: file.name,
+          sizeBytes: file.sizeBytes,
+          mimeType: resolvedMime,
+        ),
+      );
     }
 
-    _selectedFiles = event.files;
+    _selectedFiles = validated;
 
-    final List<ConnectivityResult> connectivityResult = await Connectivity().checkConnectivity();
+    final List<ConnectivityResult> connectivityResult = await Connectivity()
+        .checkConnectivity();
     final isMetered = connectivityResult.contains(ConnectivityResult.mobile);
 
-    final totalBytes = event.files.fold<int>(0, (acc, f) => acc + f.sizeBytes);
+    final totalBytes = validated.fold<int>(0, (acc, f) => acc + f.sizeBytes);
     final isLarge = totalBytes > 10 * 1024 * 1024;
     final shouldWarn = isMetered && isLarge;
 
-    emit(FilesSelected(event.files, isMetered: shouldWarn));
+    emit(FilesSelected(validated, isMetered: shouldWarn));
     if (!shouldWarn) {
       add(const UploadConfirmed());
     }
@@ -97,11 +125,17 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     UploadConfirmed event,
     Emitter<SendState> emit,
   ) async {
-    if (_resolvedRecipient == null || _selectedFiles.isEmpty || _resolvedCode == null) return;
+    if (_resolvedRecipient == null ||
+        _selectedFiles.isEmpty ||
+        _resolvedCode == null) {
+      return;
+    }
 
     _transferId = _uuid.v4();
     _fileProgressMap = {for (final f in _selectedFiles) f.name: 0.0};
-    emit(Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: 0.0));
+    emit(
+      Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: 0.0),
+    );
 
     try {
       await _bridge.startUpload(_transferId!);
@@ -113,19 +147,23 @@ class SendBloc extends Bloc<SendEvent, SendState> {
         fileIdMap[pickedFile.name] = fId;
 
         final localFile = File(pickedFile.path);
-        AppLogger.step('Computing SHA-256 for ${pickedFile.name} via Pigeon-staged path');
+        AppLogger.step(
+          'Computing SHA-256 for ${pickedFile.name} via Pigeon-staged path',
+        );
         final sha256 = await CryptoUtil.computeFileSha256(localFile);
 
-        tFiles.add(TransferFile(
-          fileId: fId,
-          name: pickedFile.name,
-          sizeBytes: pickedFile.sizeBytes,
-          mimeType: pickedFile.mimeType,
-          storagePath: 'transfers/$_transferId/$fId',
-          sha256: sha256,
-          status: FileStatus.downloading,
-          bytesUploaded: 0,
-        ));
+        tFiles.add(
+          TransferFile(
+            fileId: fId,
+            name: pickedFile.name,
+            sizeBytes: pickedFile.sizeBytes,
+            mimeType: pickedFile.mimeType,
+            storagePath: 'transfers/$_transferId/$fId',
+            sha256: sha256,
+            status: FileStatus.downloading,
+            bytesUploaded: 0,
+          ),
+        );
       }
 
       AppLogger.step('Creating Firestore transfer document $_transferId');
@@ -138,48 +176,111 @@ class SendBloc extends Bloc<SendEvent, SendState> {
         files: tFiles,
       );
 
-      await _transferRepo.updateTransferStatus(_transferId!, TransferStatus.transferring);
-      AppLogger.step('Upload started for ${_selectedFiles.length} file(s) — all via Pigeon-picked paths');
+      await _transferRepo.updateTransferStatus(
+        _transferId!,
+        TransferStatus.transferring,
+      );
+      AppLogger.step(
+        'Upload started for ${_selectedFiles.length} file(s) — all via Pigeon-picked paths',
+      );
 
-      final uploadFutures = <Future<void>>[];
-      for (final pickedFile in _selectedFiles) {
-        final tFile = tFiles.firstWhere((x) => x.fileId == fileIdMap[pickedFile.name]);
-        uploadFutures.add(_uploadOneFile(pickedFile, tFile));
+      // Run all uploads concurrently. Each file handles its own retries and
+      // marks itself failed independently — one failure does not cancel others.
+      final results = await Future.wait(
+        _selectedFiles.map((pickedFile) {
+          final tFile = tFiles.firstWhere(
+            (x) => x.fileId == fileIdMap[pickedFile.name],
+          );
+          return _uploadOneFile(
+            pickedFile,
+            tFile,
+          ).then<Object?>((_) => null).onError<Object>((e, _) {
+            AppLogger.error(
+              'File upload failed (isolated): ${pickedFile.name}',
+              data: e.toString(),
+            );
+            return e;
+          });
+        }),
+      );
+
+      final failures = results.whereType<Object>().toList();
+      final successCount = results.length - failures.length;
+
+      AppLogger.step(
+        'Upload batch done: $successCount/${results.length} succeeded',
+      );
+
+      if (failures.isEmpty) {
+        // All files uploaded successfully
+        await _transferRepo.updateTransferStatus(
+          _transferId!,
+          TransferStatus.complete,
+        );
+        AppLogger.success('All files uploaded for transfer $_transferId');
+        await _bridge.stopUpload();
+        add(const UploadFinished());
+      } else if (successCount == 0) {
+        // Every file failed — treat as full failure
+        throw Exception('All file uploads failed.');
+      } else {
+        // Partial success — some files uploaded, some failed
+        await _transferRepo.updateTransferStatus(
+          _transferId!,
+          TransferStatus.complete,
+        );
+        AppLogger.warning(
+          'Partial upload: $successCount/${results.length} files succeeded',
+        );
+        await _bridge.stopUpload();
+        add(const UploadFinished());
       }
-
-      await Future.wait(uploadFutures);
-      await _transferRepo.updateTransferStatus(_transferId!, TransferStatus.complete);
-      AppLogger.success('All files uploaded for transfer $_transferId');
-      await _bridge.stopUpload();
-      add(const UploadFinished());
     } catch (e) {
-      AppLogger.error('Upload failed for transfer $_transferId', data: e.toString());
+      AppLogger.error(
+        'Upload failed for transfer $_transferId',
+        data: e.toString(),
+      );
       if (_transferId != null) {
-        await _transferRepo.updateTransferStatus(_transferId!, TransferStatus.failed);
+        await _transferRepo.updateTransferStatus(
+          _transferId!,
+          TransferStatus.failed,
+        );
       }
       await _bridge.stopUpload();
-      add(UploadErrored('Transfer failed: $e'));
+      add(UploadErrored(_friendlyUploadError(e)));
     }
   }
 
-  Future<void> _uploadOneFile(PickedFileInfo pickedFile, TransferFile tFile) async {
+  Future<void> _uploadOneFile(
+    PickedFileInfo pickedFile,
+    TransferFile tFile,
+  ) async {
     final localFile = File(pickedFile.path);
     double latestProgress = 0.0;
     bool success = false;
     int retries = 0;
 
-    AppLogger.step('Uploading ${pickedFile.name} from Pigeon path: ${pickedFile.path}');
+    AppLogger.step(
+      'Uploading ${pickedFile.name} from Pigeon path: ${pickedFile.path}',
+    );
 
     while (!success) {
       try {
-        await for (final progress in _transferRepo.uploadFile(tFile, localFile, _transferId!)) {
+        await for (final progress in _transferRepo.uploadFile(
+          tFile,
+          localFile,
+          _transferId!,
+        )) {
           latestProgress = progress;
-          add(UploadProgressUpdated(fileId: pickedFile.name, progress: progress));
+          add(
+            UploadProgressUpdated(fileId: pickedFile.name, progress: progress),
+          );
         }
         success = true;
       } catch (e) {
         final err = e.toString().toLowerCase();
-        final isTransient = err.contains('network') ||
+        final isTransient =
+            err.contains('network') ||
             err.contains('terminated') ||
             err.contains('canceled') ||
             err.contains('unknown') ||
@@ -189,23 +290,39 @@ class SendBloc extends Bloc<SendEvent, SendState> {
 
         if (isTransient && retries < 300) {
           retries++;
-          AppLogger.warning('Upload retry $retries for ${pickedFile.name}', data: err);
+          AppLogger.warning(
+            'Upload retry $retries for ${pickedFile.name}',
+            data: err,
+          );
           await Future.delayed(const Duration(seconds: 5));
         } else {
           await _transferRepo.updateFileProgress(
-              _transferId!, tFile.fileId, (tFile.sizeBytes * latestProgress).toInt(), null, FileStatus.failed);
+            _transferId!,
+            tFile.fileId,
+            (tFile.sizeBytes * latestProgress).toInt(),
+            null,
+            FileStatus.failed,
+          );
           throw Exception('File upload failed: ${pickedFile.name} — $e');
         }
       }
     }
 
     await _transferRepo.updateFileProgress(
-        _transferId!, tFile.fileId, tFile.sizeBytes, null, FileStatus.complete);
+      _transferId!,
+      tFile.fileId,
+      tFile.sizeBytes,
+      null,
+      FileStatus.complete,
+    );
     add(UploadProgressUpdated(fileId: pickedFile.name, progress: 1.0));
     AppLogger.success('Uploaded ${pickedFile.name} (${tFile.sizeBytes} bytes)');
   }
 
-  void _onUploadProgressUpdated(UploadProgressUpdated event, Emitter<SendState> emit) {
+  void _onUploadProgressUpdated(
+    UploadProgressUpdated event,
+    Emitter<SendState> emit,
+  ) {
     if (state is! Uploading) return;
     _fileProgressMap[event.fileId] = event.progress;
     double total = 0;
@@ -213,16 +330,52 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     total = total / _fileProgressMap.length;
 
     _bridge.updateProgress((total * 100).round());
-    emit(Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: total));
+    emit(
+      Uploading(fileProgress: Map.from(_fileProgressMap), totalProgress: total),
+    );
   }
 
-  void _onUploadFinished(UploadFinished event, Emitter<SendState> emit) => emit(const UploadComplete());
+  void _onUploadFinished(UploadFinished event, Emitter<SendState> emit) =>
+      emit(const UploadComplete());
 
-  void _onUploadErrored(UploadErrored event, Emitter<SendState> emit) => emit(UploadFailed(event.reason));
+  void _onUploadErrored(UploadErrored event, Emitter<SendState> emit) =>
+      emit(UploadFailed(event.reason));
+
+  /// Maps upload errors to user-friendly messages.
+  /// Detects rate-limit deletions (document not found after creation).
+  String _friendlyUploadError(Object error) {
+    final raw = error.toString().toLowerCase();
+    // When the rate-limit function deletes the transfer doc, subsequent
+    // Firestore writes fail with "not-found".
+    if (raw.contains('not-found') || raw.contains('no document to update')) {
+      return 'You have sent too many transfers recently. Please wait a while before trying again.';
+    }
+    if (raw.contains('permission-denied')) {
+      return 'Transfer was blocked. Please check your connection and try again.';
+    }
+    return 'Transfer failed. Please try again.';
+  }
+
+  /// Resolves the best MIME type for a file.  ///
+  /// Priority:
+  /// 1. System-provided [mimeType] if specific (not octet-stream or empty).
+  /// 2. [lookupMimeType] from the `mime` package — handles .heic, .webp, .mov.
+  /// 3. Falls back to `application/octet-stream` for extensionless/unknown.
+  String _resolveMimeType(String mimeType, String fileName) {
+    if (mimeType.isNotEmpty && mimeType != 'application/octet-stream') {
+      return mimeType;
+    }
+    final looked = lookupMimeType(fileName);
+    if (looked != null && looked.isNotEmpty) return looked;
+    return 'application/octet-stream';
+  }
 
   String _friendlyMessage(Object error) {
     final raw = error.toString();
-    final stripped = raw.replaceFirst('Exception: ', '').replaceFirst('FirebaseException: ', '').trim();
+    final stripped = raw
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('FirebaseException: ', '')
+        .trim();
     return stripped.isEmpty || stripped == 'null'
         ? 'Something went wrong while validating recipient. Please try again.'
         : stripped;

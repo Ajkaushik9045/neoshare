@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
@@ -12,6 +13,7 @@ import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
@@ -29,24 +31,45 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
         android.util.Log.i(TAG, "FileHostApi registered on binary messenger")
         TransferServiceHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         android.util.Log.i(TAG, "TransferServiceHostApi registered on binary messenger")
+
+        // Exposes Android SDK version to Dart for permission gating
+        MethodChannel(
+                        flutterEngine.dartExecutor.binaryMessenger,
+                        "com.example.neoshare/sdk_version"
+                )
+                .setMethodCallHandler { call, result ->
+                    if (call.method == "getSdkInt") {
+                        result.success(Build.VERSION.SDK_INT)
+                    } else {
+                        result.notImplemented()
+                    }
+                }
     }
 
     // ─── TransferServiceHostApi ────────────────────────────────────────────────
 
     override fun startUploadService(transferId: String) {
         android.util.Log.i(TAG, "startUploadService transferId=$transferId")
-        val intent = Intent(this, TransferForegroundService::class.java).apply {
-            putExtra(TransferForegroundService.EXTRA_TRANSFER_ID, transferId)
-            putExtra(TransferForegroundService.EXTRA_ACTION, TransferForegroundService.ACTION_START)
-        }
+        val intent =
+                Intent(this, TransferForegroundService::class.java).apply {
+                    putExtra(TransferForegroundService.EXTRA_TRANSFER_ID, transferId)
+                    putExtra(
+                            TransferForegroundService.EXTRA_ACTION,
+                            TransferForegroundService.ACTION_START
+                    )
+                }
         ContextCompat.startForegroundService(this, intent)
     }
 
     override fun stopUploadService() {
         android.util.Log.i(TAG, "stopUploadService called")
-        val intent = Intent(this, TransferForegroundService::class.java).apply {
-            putExtra(TransferForegroundService.EXTRA_ACTION, TransferForegroundService.ACTION_STOP)
-        }
+        val intent =
+                Intent(this, TransferForegroundService::class.java).apply {
+                    putExtra(
+                            TransferForegroundService.EXTRA_ACTION,
+                            TransferForegroundService.ACTION_STOP
+                    )
+                }
         startService(intent)
     }
 
@@ -60,11 +83,12 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
     override fun pickFiles(callback: (Result<List<PickedFileInfo>>) -> Unit) {
         android.util.Log.i(TAG, "pickFiles() called via Pigeon")
         pendingPickCallback = callback
-        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "*/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            addCategory(Intent.CATEGORY_OPENABLE)
-        }
+        val intent =
+                Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }
         startActivityForResult(Intent.createChooser(intent, "Select files"), FILE_PICK_CODE)
     }
 
@@ -97,7 +121,10 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
             val info = uriToPickedFileInfo(uri)
             if (info != null) {
                 results.add(info)
-                android.util.Log.i(TAG, "Pigeon pickFiles: staged '${info.name}' (${info.sizeBytes} bytes, ${info.mimeType}) at ${info.path}")
+                android.util.Log.i(
+                        TAG,
+                        "Pigeon pickFiles: staged '${info.name}' (${info.sizeBytes} bytes, ${info.mimeType}) at ${info.path}"
+                )
             } else {
                 android.util.Log.w(TAG, "pickFiles: could not resolve URI $uri")
             }
@@ -118,9 +145,9 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
                 }
             }
 
-            val mimeType = contentResolver.getType(uri)
-                ?: guessMimeType(displayName)
-                ?: "application/octet-stream"
+            val mimeType =
+                    contentResolver.getType(uri)
+                            ?: guessMimeType(displayName) ?: "application/octet-stream"
 
             // Copy to cache so Dart's File API can read it (content URIs are not real paths)
             val cacheFile = File(cacheDir, "pick_${System.currentTimeMillis()}_$displayName")
@@ -129,10 +156,10 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
             }
 
             PickedFileInfo(
-                path = cacheFile.absolutePath,
-                name = displayName,
-                sizeBytes = cacheFile.length(),
-                mimeType = mimeType,
+                    path = cacheFile.absolutePath,
+                    name = displayName,
+                    sizeBytes = cacheFile.length(),
+                    mimeType = mimeType,
             )
         } catch (e: Exception) {
             android.util.Log.e(TAG, "uriToPickedFileInfo failed: ${e.message}")
@@ -148,29 +175,37 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
     // ─── saveToDownloads ───────────────────────────────────────────────────────
 
     override fun saveToDownloads(
-        tempPath: String,
-        mimeType: String,
-        fileName: String,
-        callback: (Result<String>) -> Unit,
+            tempPath: String,
+            mimeType: String,
+            fileName: String,
+            callback: (Result<String>) -> Unit,
     ) {
-        android.util.Log.i(TAG, "saveToDownloads() '$fileName' mimeType='$mimeType' from '$tempPath'")
+        android.util.Log.i(
+                TAG,
+                "saveToDownloads() '$fileName' mimeType='$mimeType' from '$tempPath'"
+        )
         try {
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, mimeType)
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: throw Exception("MediaStore.insert returned null for '$fileName'")
+            val values =
+                    ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                        put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+            val uri =
+                    contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                            ?: throw Exception("MediaStore.insert returned null for '$fileName'")
 
             contentResolver.openOutputStream(uri)?.use { out ->
                 File(tempPath).inputStream().copyTo(out)
             }
 
             // Clear IS_PENDING so the file appears in Downloads app
-            contentResolver.update(uri, ContentValues().apply {
-                put(MediaStore.Downloads.IS_PENDING, 0)
-            }, null, null)
+            contentResolver.update(
+                    uri,
+                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                    null,
+                    null
+            )
 
             android.util.Log.i(TAG, "saveToDownloads: '$fileName' saved → $uri")
             callback(Result.success(uri.toString()))

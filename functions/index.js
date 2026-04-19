@@ -1,12 +1,68 @@
 const {setGlobalOptions} = require("firebase-functions");
-const {onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onDocumentUpdated, onDocumentCreated} =
+  require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
-const {getFirestore} = require("firebase-admin/firestore");
+const {getFirestore, Timestamp} = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
+
+// Max transfers a single sender can create within a rolling 1-hour window.
+const RATE_LIMIT_PER_HOUR = 10;
+
+/**
+ * Rate-limits transfer creation per sender.
+ *
+ * Fires on every new transfer document. Counts how many transfers the same
+ * senderCode created in the last hour. If the count exceeds the limit the
+ * new document is deleted immediately, preventing the upload from starting.
+ */
+exports.enforceTransferRateLimit = onDocumentCreated(
+    "transfers/{transferId}",
+    async (event) => {
+      const data = event.data.data();
+      const senderCode = data.senderCode;
+      const transferId = event.params.transferId;
+
+      if (!senderCode) {
+        logger.warn(
+            `[RateLimit] Transfer ${transferId} has no senderCode, skip.`,
+        );
+        return null;
+      }
+
+      const db = getFirestore();
+      const oneHourAgo = Timestamp.fromDate(
+          new Date(Date.now() - 60 * 60 * 1000),
+      );
+
+      const snap = await db
+          .collection("transfers")
+          .where("senderCode", "==", senderCode)
+          .where("createdAt", ">=", oneHourAgo)
+          .count()
+          .get();
+
+      const count = snap.data().count;
+
+      logger.info(
+          `[RateLimit] sender=${senderCode} ` +
+      `count=${count} limit=${RATE_LIMIT_PER_HOUR}`,
+      );
+
+      if (count > RATE_LIMIT_PER_HOUR) {
+        logger.warn(
+            `[RateLimit] sender=${senderCode} exceeded limit. ` +
+        `Deleting transfer ${transferId}.`,
+        );
+        await event.data.ref.delete();
+      }
+
+      return null;
+    },
+);
 
 /**
  * Fires when a transfer document is updated.
@@ -105,3 +161,55 @@ exports.notifyRecipientOnTransferComplete = onDocumentUpdated(
       return null;
     },
 );
+
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+
+/**
+ * Runs every 6 hours. Finds all transfers where expiresAt is in the past
+ * and status is not already "expired", marks them expired, and deletes
+ * their Firebase Storage files to free up space.
+ */
+exports.expireStaleTransfers = onSchedule("every 6 hours", async () => {
+  const db = getFirestore();
+  const now = Timestamp.now();
+
+  const stale = await db
+      .collection("transfers")
+      .where("expiresAt", "<=", now)
+      .where("status", "!=", "expired")
+      .get();
+
+  if (stale.empty) {
+    logger.info("[Expire] No stale transfers found.");
+    return;
+  }
+
+  logger.info(`[Expire] Found ${stale.size} stale transfer(s) to expire.`);
+
+  const {getStorage} = require("firebase-admin/storage");
+  const bucket = getStorage().bucket();
+
+  const batch = db.batch();
+
+  for (const doc of stale.docs) {
+    const transferId = doc.id;
+
+    // Mark as expired in Firestore
+    batch.update(doc.ref, {status: "expired"});
+
+    // Delete all Storage files for this transfer
+    const storagePath = `transfers/${transferId}`;
+    try {
+      await bucket.deleteFiles({prefix: storagePath});
+      logger.info(`[Expire] Deleted storage files for ${transferId}`);
+    } catch (err) {
+      logger.warn(
+          `[Expire] Could not delete storage for ${transferId}:`,
+          err.message,
+      );
+    }
+  }
+
+  await batch.commit();
+  logger.info(`[Expire] Marked ${stale.size} transfer(s) as expired.`);
+});

@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../../core/utils/app_logger.dart';
+import '../../data/datasources/local_transfer_ds.dart';
 import '../../domain/entities/transfer.dart';
 import '../../domain/entities/transfer_file.dart';
 import '../../domain/usecases/watch_incoming_transfers.dart';
@@ -18,6 +19,7 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
   final WatchIncomingTransfers _watchIncoming;
   final DownloadTransfer _downloadTransfer;
   final FirebaseAuth _firebaseAuth;
+  final LocalTransferDataSource _localDs;
 
   StreamSubscription? _transfersSubscription;
   final Map<String, StreamSubscription> _downloadSubscriptions = {};
@@ -27,10 +29,12 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
     required WatchIncomingTransfers watchIncomingTransfers,
     required DownloadTransfer downloadTransfer,
     required FirebaseAuth firebaseAuth,
-  })  : _watchIncoming = watchIncomingTransfers,
-        _downloadTransfer = downloadTransfer,
-        _firebaseAuth = firebaseAuth,
-        super(InboxInitial()) {
+    required LocalTransferDataSource localTransferDataSource,
+  }) : _watchIncoming = watchIncomingTransfers,
+       _downloadTransfer = downloadTransfer,
+       _firebaseAuth = firebaseAuth,
+       _localDs = localTransferDataSource,
+       super(InboxInitial()) {
     on<InboxStarted>(_onStarted);
     on<TransfersUpdated>(_onTransfersUpdated);
     on<DownloadRequested>(_onDownloadRequested);
@@ -41,6 +45,9 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
   }
 
   void _onStarted(InboxStarted event, Emitter<InboxState> emit) {
+    // Load persisted saved file IDs from Hive so ticks survive app restarts
+    final persistedSavedIds = _localDs.getSavedFileIds();
+
     emit(InboxLoading());
     final uid = _firebaseAuth.currentUser?.uid;
     if (uid == null) {
@@ -56,6 +63,11 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
       ),
     );
     AppLogger.step('InboxBloc: watching transfers for uid=$uid');
+
+    // Seed the in-memory set with persisted data
+    if (persistedSavedIds.isNotEmpty) {
+      emit(InboxLoaded(transfers: const [], savedFileIds: persistedSavedIds));
+    }
   }
 
   void _onTransfersUpdated(TransfersUpdated event, Emitter<InboxState> emit) {
@@ -67,7 +79,10 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
         .where((t) => !_processedTransferIds.contains(t.transferId))
         .toList();
 
-    emit(current.copyWith(transfers: fresh));
+    // Merge persisted saved IDs so ticks are correct after Firestore updates
+    final merged = current.savedFileIds.union(_localDs.getSavedFileIds());
+
+    emit(current.copyWith(transfers: fresh, savedFileIds: merged));
   }
 
   // ── Batch download all files in a transfer ─────────────────────────────────
@@ -78,18 +93,19 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
     final key = event.transferId;
 
     if (current.activeDownloads.contains(key)) return;
-    AppLogger.step('InboxBloc: DownloadRequested[$key] — using Pigeon saveToDownloads');
+    AppLogger.step(
+      'InboxBloc: DownloadRequested[$key] — using Pigeon saveToDownloads',
+    );
 
-    emit(current.copyWith(
-      activeDownloads: {...current.activeDownloads, key},
-    ));
+    emit(current.copyWith(activeDownloads: {...current.activeDownloads, key}));
 
-    _downloadSubscriptions[key] =
-        _downloadTransfer(event.transferId).listen(
+    _downloadSubscriptions[key] = _downloadTransfer(event.transferId).listen(
       (result) => result.fold(
         (failure) {
           AppLogger.error('Download failed for $key', data: failure.message);
-          add(TransferFailed(event.transferId, failure.message, downloadKey: key));
+          add(
+            TransferFailed(event.transferId, failure.message, downloadKey: key),
+          );
         },
         (transfer) {
           add(DownloadProgressUpdated(transfer));
@@ -120,30 +136,41 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
     final key = '${event.transferId}_${event.fileId}';
 
     if (current.activeDownloads.contains(key)) return;
-    AppLogger.step('InboxBloc: DownloadFileRequested[$key] — using Pigeon saveToDownloads');
+    AppLogger.step(
+      'InboxBloc: DownloadFileRequested[$key] — using Pigeon saveToDownloads',
+    );
 
-    emit(current.copyWith(
-      activeDownloads: {...current.activeDownloads, key},
-    ));
+    emit(current.copyWith(activeDownloads: {...current.activeDownloads, key}));
 
     _downloadSubscriptions[key] =
         _downloadTransfer(event.transferId, event.fileId).listen(
-      (result) => result.fold(
-        (failure) {
-          AppLogger.error('File download failed [$key]', data: failure.message);
-          add(TransferFailed(event.transferId, failure.message, downloadKey: key));
-        },
-        (transfer) => add(DownloadProgressUpdated(transfer)),
-      ),
-      onError: (e) {
-        AppLogger.error('File download stream error [$key]', data: e.toString());
-        add(TransferFailed(event.transferId, e.toString(), downloadKey: key));
-      },
-      onDone: () {
-        AppLogger.success('File download stream closed [$key]');
-        add(_DownloadCleared(key));
-      },
-    );
+          (result) => result.fold((failure) {
+            AppLogger.error(
+              'File download failed [$key]',
+              data: failure.message,
+            );
+            add(
+              TransferFailed(
+                event.transferId,
+                failure.message,
+                downloadKey: key,
+              ),
+            );
+          }, (transfer) => add(DownloadProgressUpdated(transfer))),
+          onError: (e) {
+            AppLogger.error(
+              'File download stream error [$key]',
+              data: e.toString(),
+            );
+            add(
+              TransferFailed(event.transferId, e.toString(), downloadKey: key),
+            );
+          },
+          onDone: () {
+            AppLogger.success('File download stream closed [$key]');
+            add(_DownloadCleared(key));
+          },
+        );
   }
 
   void _onProgressUpdated(
@@ -163,7 +190,9 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
     for (final f in event.transfer.files) {
       if (f.status == FileStatus.complete) newSavedFileIds.add(f.fileId);
     }
-    final allSaved = event.transfer.files.every((f) => newSavedFileIds.contains(f.fileId));
+    final allSaved = event.transfer.files.every(
+      (f) => newSavedFileIds.contains(f.fileId),
+    );
     if (allSaved) newSavedTransferIds.add(event.transfer.transferId);
 
     final newActive = Set<String>.from(current.activeDownloads)
@@ -171,26 +200,32 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
         if (allSaved && k == event.transfer.transferId) return true;
         for (final f in event.transfer.files) {
           if (k == '${event.transfer.transferId}_${f.fileId}' &&
-              f.status == FileStatus.complete) return true;
+              f.status == FileStatus.complete)
+            return true;
         }
         return false;
       });
 
-    emit(current.copyWith(
-      transfers: updatedList,
-      activeDownloads: newActive,
-      savedFileIds: newSavedFileIds,
-      savedTransferIds: newSavedTransferIds,
-    ));
+    emit(
+      current.copyWith(
+        transfers: updatedList,
+        activeDownloads: newActive,
+        savedFileIds: newSavedFileIds,
+        savedTransferIds: newSavedTransferIds,
+      ),
+    );
   }
 
   void _onDownloadCleared(_DownloadCleared event, Emitter<InboxState> emit) {
     if (state is! InboxLoaded) return;
     final current = state as InboxLoaded;
     if (!current.activeDownloads.contains(event.downloadKey)) return;
-    emit(current.copyWith(
-      activeDownloads: Set.from(current.activeDownloads)..remove(event.downloadKey),
-    ));
+    emit(
+      current.copyWith(
+        activeDownloads: Set.from(current.activeDownloads)
+          ..remove(event.downloadKey),
+      ),
+    );
   }
 
   void _onTransferFailed(TransferFailed event, Emitter<InboxState> emit) {
@@ -206,10 +241,12 @@ class InboxBloc extends Bloc<InboxEvent, InboxState> {
       ..remove(event.transferId)
       ..remove(event.downloadKey ?? event.transferId);
 
-    emit(current.copyWith(
-      activeDownloads: newActive,
-      errors: {...current.errors, event.transferId: event.reason},
-    ));
+    emit(
+      current.copyWith(
+        activeDownloads: newActive,
+        errors: {...current.errors, event.transferId: event.reason},
+      ),
+    );
   }
 
   @override

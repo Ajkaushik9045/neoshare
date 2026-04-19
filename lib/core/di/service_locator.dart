@@ -38,8 +38,12 @@ final GetIt sl = GetIt.instance;
 Future<void> setupServiceLocator() async {
   AppLogger.step('Initializing Hive local storage');
   await Hive.initFlutter();
-  final identityBox = await Hive.openBox<dynamic>(LocalIdentityDataSource.boxName);
-  final transferBox = await Hive.openBox<dynamic>(LocalTransferDataSource.boxName);
+  final identityBox = await Hive.openBox<dynamic>(
+    LocalIdentityDataSource.boxName,
+  );
+  final transferBox = await Hive.openBox<dynamic>(
+    LocalTransferDataSource.boxName,
+  );
   AppLogger.success('Hive initialized and boxes opened');
 
   sl
@@ -47,7 +51,9 @@ Future<void> setupServiceLocator() async {
     ..registerLazySingleton<NotificationPermissionService>(
       () => NotificationPermissionService(),
     )
-    ..registerLazySingleton<TransferServiceHostApi>(() => TransferServiceHostApi())
+    ..registerLazySingleton<TransferServiceHostApi>(
+      () => TransferServiceHostApi(),
+    )
     ..registerLazySingleton<ForegroundServiceBridge>(
       () => ForegroundServiceBridge(sl<TransferServiceHostApi>()),
     )
@@ -105,9 +111,7 @@ Future<void> setupServiceLocator() async {
     ..registerLazySingleton<DownloadTransfer>(
       () => DownloadTransfer(sl<TransferRepo>()),
     )
-    ..registerFactory<IdentityBloc>(
-      () => IdentityBloc(sl<ProvisionIdentity>()),
-    )
+    ..registerFactory<IdentityBloc>(() => IdentityBloc(sl<ProvisionIdentity>()))
     ..registerFactory<SendBloc>(
       () => SendBloc(sl<TransferRepo>(), sl<ForegroundServiceBridge>()),
     )
@@ -116,6 +120,7 @@ Future<void> setupServiceLocator() async {
         watchIncomingTransfers: sl<WatchIncomingTransfers>(),
         downloadTransfer: sl<DownloadTransfer>(),
         firebaseAuth: sl<FirebaseAuth>(),
+        localTransferDataSource: sl<LocalTransferDataSource>(),
       ),
     );
 

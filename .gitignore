@@ -18,10 +18,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+# .vscode/ — kept in repo for launch configs
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -39,14 +37,28 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android Studio build artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
 
-firebase_options.dart
-.claude
-.agents
-# Platform-specific build outputs
-.windsurf
-.kiro
+# AI IDE tool directories (not relevant to reviewers)
+.claude/
+.agents/
+.windsurf/
+.kiro/
+
+# Kiro skills lock (internal tooling)
+skills-lock.json
+
+# Flutter plugin cache (auto-generated)
+.flutter-plugins
+
+# Platforms not targeted (Android-only submission)
+/linux/
+/macos/
+/windows/
+/web/
+
+# Node modules for Cloud Functions (install via npm install)
+functions/node_modules/

@@ -86,17 +86,20 @@ class FirestoreTransferDataSource {
   }
 
   /// Streams incoming transfer metadata for a receiver, newest first.
+  /// Sorting is done client-side to avoid requiring a composite Firestore index.
   Stream<List<TransferModel>> watchIncoming({required String receiverId}) {
     return _firestore
         .collection('transfers')
         .where('recipientUid', isEqualTo: receiverId)
         .where('status', isNotEqualTo: 'expired')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
+        .map((snapshot) {
+          final list = snapshot.docs
               .map((doc) => TransferModel.fromJson(doc.data(), doc.id))
-              .toList(),
-        );
+              .toList();
+          // Sort newest first client-side — no composite index needed
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        });
   }
 }

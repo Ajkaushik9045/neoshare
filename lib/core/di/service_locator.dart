@@ -117,6 +117,7 @@ Future<void> setupServiceLocator() async {
         sl<TransferRepo>(),
         sl<ForegroundServiceBridge>(),
         sl<LocalTransferDataSource>(),
+        sl<LocalIdentityDataSource>(),
       ),
     )
     ..registerFactory<InboxBloc>(

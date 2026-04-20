@@ -13,6 +13,7 @@ import '../../../../core/utils/app_logger.dart';
 import '../../../../core/utils/crypto_util.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../data/datasources/local_transfer_ds.dart';
+import '../../../identity/data/datasources/local_identity_ds.dart';
 import '../../domain/entities/recipient.dart';
 import '../../domain/entities/transfer_file.dart';
 import '../../domain/entities/transfer.dart';
@@ -24,7 +25,7 @@ part 'send_state.dart';
 /// BLoC responsible for send transfer interactions.
 /// File selection is handled exclusively via Pigeon [FileHostApi.pickFiles()].
 class SendBloc extends Bloc<SendEvent, SendState> {
-  SendBloc(this._transferRepo, this._bridge, this._localDs)
+  SendBloc(this._transferRepo, this._bridge, this._localDs, this._identityDs)
     : super(const SendIdle()) {
     on<LookupRecipient>(_onLookupRecipient);
     on<FilesChosen>(_onFilesChosen);
@@ -49,6 +50,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
   final TransferRepo _transferRepo;
   final ForegroundServiceBridge _bridge;
   final LocalTransferDataSource _localDs;
+  final LocalIdentityDataSource _identityDs;
   final Uuid _uuid = const Uuid();
 
   Recipient? _resolvedRecipient;
@@ -185,10 +187,11 @@ class SendBloc extends Bloc<SendEvent, SendState> {
       }
 
       AppLogger.step('Creating Firestore transfer document $_transferId');
+      final sender = _identityDs.getCachedUser();
       await _transferRepo.createPendingTransfer(
         transferId: _transferId!,
-        senderId: 'temp-sender-id',
-        senderCode: 'temp-sender',
+        senderId: sender?.uid ?? '',
+        senderCode: sender?.shortCode ?? '',
         recipientCode: _resolvedCode!,
         recipientUid: _resolvedRecipient!.uid,
         files: tFiles,

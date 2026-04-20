@@ -1,0 +1,23 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "transfers",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "recipientUid",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "status",
+                    "order": "DESCENDING"
+                }
+            ]
+        }
+    ],
+    "fieldOverrides": []
+}

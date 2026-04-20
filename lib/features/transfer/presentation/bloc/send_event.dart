@@ -51,3 +51,8 @@ class UploadErrored extends SendEvent {
 class AppResumed extends SendEvent {
   const AppResumed();
 }
+
+/// Resets the bloc back to SendIdle — used after dismissing error dialogs.
+class SendReset extends SendEvent {
+  const SendReset();
+}

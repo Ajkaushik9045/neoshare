@@ -15,16 +15,22 @@ class AppPlatformDialog {
     if (Platform.isIOS || Platform.isMacOS) {
       return showCupertinoDialog<void>(
         context: context,
-        builder: (_) => CupertinoAlertDialog(
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        builder: (dialogCtx) => CupertinoAlertDialog(
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
           content: Padding(
             padding: const EdgeInsets.only(top: 8.0),
             child: Text(message),
           ),
           actions: [
             CupertinoDialogAction(
-              child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w600)),
-              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'OK',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onPressed: () => Navigator.of(dialogCtx).pop(),
             ),
           ],
         ),
@@ -33,10 +39,8 @@ class AppPlatformDialog {
 
     return showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+      builder: (dialogCtx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 8,
         backgroundColor: Colors.white,
         child: Padding(
@@ -68,7 +72,7 @@ class AppPlatformDialog {
               ),
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(dialogCtx).pop(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF5A78FF),
                   foregroundColor: Colors.white,

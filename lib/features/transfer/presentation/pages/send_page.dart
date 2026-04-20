@@ -61,6 +61,9 @@ class _SendPageState extends State<SendPage> {
             } else {
               AppScaffoldMessenger.showError(context, state.reason);
             }
+            if (context.mounted) {
+              context.read<SendBloc>().add(const SendReset());
+            }
           } else if (state is UploadFailed) {
             if (state.reason.contains('500 MB')) {
               await AppPlatformDialog.showMessage(
@@ -70,6 +73,9 @@ class _SendPageState extends State<SendPage> {
               );
             } else {
               AppScaffoldMessenger.showError(context, state.reason);
+            }
+            if (context.mounted) {
+              context.read<SendBloc>().add(const SendReset());
             }
           } else if (state is RecipientFound) {
             AppScaffoldMessenger.showInfo(

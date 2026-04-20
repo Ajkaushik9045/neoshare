@@ -34,6 +34,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
     on<UploadFinished>(_onUploadFinished);
     on<UploadErrored>(_onUploadErrored);
     on<AppResumed>(_onAppResumed);
+    on<SendReset>((_, emit) => emit(const SendIdle()));
 
     // Listen for app resume signal from Android MainActivity
     if (Platform.isAndroid) {

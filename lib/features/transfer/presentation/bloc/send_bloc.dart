@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mime/mime.dart';
 import 'package:uuid/uuid.dart';
@@ -11,6 +12,7 @@ import '../../../../core/platform/foreground_service_bridge.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../../../core/utils/crypto_util.dart';
 import '../../../../core/utils/short_code_util.dart';
+import '../../data/datasources/local_transfer_ds.dart';
 import '../../domain/entities/recipient.dart';
 import '../../domain/entities/transfer_file.dart';
 import '../../domain/entities/transfer.dart';
@@ -22,17 +24,31 @@ part 'send_state.dart';
 /// BLoC responsible for send transfer interactions.
 /// File selection is handled exclusively via Pigeon [FileHostApi.pickFiles()].
 class SendBloc extends Bloc<SendEvent, SendState> {
-  SendBloc(this._transferRepo, this._bridge) : super(const SendIdle()) {
+  SendBloc(this._transferRepo, this._bridge, this._localDs)
+    : super(const SendIdle()) {
     on<LookupRecipient>(_onLookupRecipient);
     on<FilesChosen>(_onFilesChosen);
     on<UploadConfirmed>(_onUploadConfirmed);
     on<UploadProgressUpdated>(_onUploadProgressUpdated);
     on<UploadFinished>(_onUploadFinished);
     on<UploadErrored>(_onUploadErrored);
+    on<AppResumed>(_onAppResumed);
+
+    // Listen for app resume signal from Android MainActivity
+    if (Platform.isAndroid) {
+      const MethodChannel(
+        'com.example.neoshare/app_lifecycle',
+      ).setMethodCallHandler((call) async {
+        if (call.method == 'onAppResumed') {
+          add(const AppResumed());
+        }
+      });
+    }
   }
 
   final TransferRepo _transferRepo;
   final ForegroundServiceBridge _bridge;
+  final LocalTransferDataSource _localDs;
   final Uuid _uuid = const Uuid();
 
   Recipient? _resolvedRecipient;
@@ -139,6 +155,8 @@ class SendBloc extends Bloc<SendEvent, SendState> {
 
     try {
       await _bridge.startUpload(_transferId!);
+      // Persist so we can recover if the process is killed
+      await _localDs.saveActiveTransferId(_transferId!);
       final tFiles = <TransferFile>[];
       final fileIdMap = <String, String>{};
 
@@ -219,6 +237,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
         );
         AppLogger.success('All files uploaded for transfer $_transferId');
         await _bridge.stopUpload();
+        await _localDs.clearActiveTransferId();
         add(const UploadFinished());
       } else if (successCount == 0) {
         // Every file failed — treat as full failure
@@ -233,6 +252,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
           'Partial upload: $successCount/${results.length} files succeeded',
         );
         await _bridge.stopUpload();
+        await _localDs.clearActiveTransferId();
         add(const UploadFinished());
       }
     } catch (e) {
@@ -247,6 +267,7 @@ class SendBloc extends Bloc<SendEvent, SendState> {
         );
       }
       await _bridge.stopUpload();
+      await _localDs.clearActiveTransferId();
       add(UploadErrored(_friendlyUploadError(e)));
     }
   }
@@ -340,6 +361,41 @@ class SendBloc extends Bloc<SendEvent, SendState> {
 
   void _onUploadErrored(UploadErrored event, Emitter<SendState> emit) =>
       emit(UploadFailed(event.reason));
+
+  /// When the app resumes, check if there's an in-progress transfer in Firestore.
+  /// If so, transition to UploadPaused so the UI can prompt the user to resume.
+  Future<void> _onAppResumed(AppResumed event, Emitter<SendState> emit) async {
+    if (state is Uploading) return; // already running
+
+    // Recover transferId from Hive if the process was killed
+    _transferId ??= _localDs.getActiveTransferId();
+
+    if (_transferId == null) {
+      AppLogger.step(
+        'AppResumed — no active transfer found, nothing to resume',
+      );
+      return;
+    }
+
+    AppLogger.step('AppResumed — checking transfer status', data: _transferId);
+    try {
+      final status = await _transferRepo.getTransferStatus(_transferId!);
+      if (status == TransferStatus.transferring) {
+        AppLogger.step('Transfer still transferring — showing paused UI');
+        emit(UploadPaused(transferId: _transferId!));
+      } else {
+        // Transfer already completed/failed while app was away — clean up
+        AppLogger.step('Transfer no longer active ($status) — clearing');
+        await _localDs.clearActiveTransferId();
+        _transferId = null;
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'AppResumed: could not check transfer status',
+        data: e.toString(),
+      );
+    }
+  }
 
   /// Maps upload errors to user-friendly messages.
   /// Detects rate-limit deletions (document not found after creation).

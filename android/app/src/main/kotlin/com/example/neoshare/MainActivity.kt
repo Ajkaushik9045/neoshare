@@ -44,6 +44,24 @@ class MainActivity : FlutterActivity(), FileHostApi, TransferServiceHostApi {
                         result.notImplemented()
                     }
                 }
+
+        // Store channel so we can call Dart when app resumes
+        appLifecycleChannel =
+                MethodChannel(
+                        flutterEngine.dartExecutor.binaryMessenger,
+                        "com.example.neoshare/app_lifecycle"
+                )
+    }
+
+    // ─── App lifecycle — resume upload ───────────────────────────────────────
+
+    private var appLifecycleChannel: MethodChannel? = null
+
+    /** When user reopens the app: notify Dart so SendBloc can resume the upload. */
+    override fun onResume() {
+        super.onResume()
+        appLifecycleChannel?.invokeMethod("onAppResumed", null)
+        android.util.Log.i(TAG, "onResume — notified Dart via app_lifecycle channel")
     }
 
     // ─── TransferServiceHostApi ────────────────────────────────────────────────

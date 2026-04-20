@@ -29,24 +29,24 @@ class TransferFileModel extends TransferFile {
       );
 
   Map<String, dynamic> toMap() => {
-        'fileId': fileId,
-        'name': name,
-        'mimeType': mimeType,
-        'sizeBytes': sizeBytes,
-        'storagePath': storagePath,
-        'sha256': sha256,
-        'status': status.name,
-        'bytesUploaded': bytesUploaded,
-        'bytesDownloaded': bytesDownloaded,
-      };
+    'fileId': fileId,
+    'name': name,
+    'mimeType': mimeType,
+    'sizeBytes': sizeBytes,
+    'storagePath': storagePath,
+    'sha256': sha256,
+    'status': status.name,
+    'bytesUploaded': bytesUploaded,
+    'bytesDownloaded': bytesDownloaded,
+  };
 
   static FileStatus _mapStatus(String? s) => switch (s) {
-        'downloading' => FileStatus.downloading,
-        'complete' => FileStatus.complete,
-        'failed' => FileStatus.failed,
-        'corrupted' => FileStatus.corrupted,
-        _ => FileStatus.pending, 
-      };
+    'downloading' => FileStatus.downloading,
+    'complete' => FileStatus.complete,
+    'failed' => FileStatus.failed,
+    'corrupted' => FileStatus.corrupted,
+    _ => FileStatus.pending,
+  };
 }
 
 class TransferModel extends Transfer {
@@ -70,9 +70,11 @@ class TransferModel extends Transfer {
       senderCode: data['senderCode'] as String? ?? '',
       recipientCode: data['recipientCode'] as String? ?? '',
       recipientUid: data['recipientUid'] as String? ?? '',
-      status: _mapTransferStatus(data['status'] as String?),
+      status: mapStatus(data['status'] as String?),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      expiresAt: (data['expiresAt'] as Timestamp?)?.toDate() ?? DateTime.now().add(const Duration(hours: 48)),
+      expiresAt:
+          (data['expiresAt'] as Timestamp?)?.toDate() ??
+          DateTime.now().add(const Duration(hours: 48)),
       files: (data['files'] as List<dynamic>? ?? [])
           .map((f) => TransferFileModel.fromMap(f as Map<String, dynamic>))
           .toList(),
@@ -86,9 +88,11 @@ class TransferModel extends Transfer {
       senderCode: json['senderCode'] as String? ?? '',
       recipientCode: json['recipientCode'] as String? ?? '',
       recipientUid: json['recipientUid'] as String? ?? '',
-      status: _mapTransferStatus(json['status'] as String?),
+      status: mapStatus(json['status'] as String?),
       createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      expiresAt: (json['expiresAt'] as Timestamp?)?.toDate() ?? DateTime.now().add(const Duration(hours: 48)),
+      expiresAt:
+          (json['expiresAt'] as Timestamp?)?.toDate() ??
+          DateTime.now().add(const Duration(hours: 48)),
       files: (json['files'] as List<dynamic>? ?? [])
           .map((f) => TransferFileModel.fromMap(f as Map<String, dynamic>))
           .toList(),
@@ -104,26 +108,29 @@ class TransferModel extends Transfer {
       'status': status.name,
       'createdAt': Timestamp.fromDate(createdAt),
       'expiresAt': Timestamp.fromDate(expiresAt),
-      'files': files.map((f) => (TransferFileModel(
-                fileId: f.fileId,
-                name: f.name,
-                mimeType: f.mimeType,
-                sizeBytes: f.sizeBytes,
-                storagePath: f.storagePath,
-                sha256: f.sha256,
-                status: f.status,
-                bytesUploaded: f.bytesUploaded,
-                bytesDownloaded: f.bytesDownloaded,
-              )).toMap())
+      'files': files
+          .map(
+            (f) => (TransferFileModel(
+              fileId: f.fileId,
+              name: f.name,
+              mimeType: f.mimeType,
+              sizeBytes: f.sizeBytes,
+              storagePath: f.storagePath,
+              sha256: f.sha256,
+              status: f.status,
+              bytesUploaded: f.bytesUploaded,
+              bytesDownloaded: f.bytesDownloaded,
+            )).toMap(),
+          )
           .toList(),
     };
   }
 
-  static TransferStatus _mapTransferStatus(String? s) => switch (s) {
-        'transferring' => TransferStatus.transferring,
-        'complete' => TransferStatus.complete,
-        'failed' => TransferStatus.failed,
-        'expired' => TransferStatus.expired,
-        _ => TransferStatus.pending,
-      };
+  static TransferStatus mapStatus(String? s) => switch (s) {
+    'transferring' => TransferStatus.transferring,
+    'complete' => TransferStatus.complete,
+    'failed' => TransferStatus.failed,
+    'expired' => TransferStatus.expired,
+    _ => TransferStatus.pending,
+  };
 }

@@ -8,6 +8,7 @@ class LocalTransferDataSource {
   static const String boxName = 'transfer_metadata';
   static const String _processedKey = 'processed_transfers';
   static const String _savedFilesKey = 'saved_file_ids';
+  static const String _activeTransferKey = 'active_transfer_id';
 
   LocalTransferDataSource(this._box);
 
@@ -56,5 +57,22 @@ class LocalTransferDataSource {
     final list =
         _box.get(_savedFilesKey, defaultValue: <String>[]) as List<dynamic>;
     return list.contains(fileId);
+  }
+
+  // ── Active transfer (survives process death) ───────────────────────────────
+
+  /// Persists the currently active transfer ID so it can be recovered on resume.
+  Future<void> saveActiveTransferId(String transferId) async {
+    await _box.put(_activeTransferKey, transferId);
+  }
+
+  /// Returns the last active transfer ID, or null if none.
+  String? getActiveTransferId() {
+    return _box.get(_activeTransferKey) as String?;
+  }
+
+  /// Clears the active transfer ID (call when upload completes or fails).
+  Future<void> clearActiveTransferId() async {
+    await _box.delete(_activeTransferKey);
   }
 }

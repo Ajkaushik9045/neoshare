@@ -21,7 +21,13 @@ abstract class TransferRepo {
 
   Future<void> updateTransferStatus(String transferId, TransferStatus status);
 
-  Stream<double> uploadFile(TransferFile fileDesc, File localFile, String transferId);
+  Future<TransferStatus> getTransferStatus(String transferId);
+
+  Stream<double> uploadFile(
+    TransferFile fileDesc,
+    File localFile,
+    String transferId,
+  );
 
   Future<void> updateFileProgress(
     String transferId,
@@ -35,5 +41,8 @@ abstract class TransferRepo {
   Stream<List<Transfer>> watchIncoming({required String receiverId});
 
   /// Downloads either the specified file or all pending files of a transfer. Saves via Pigeon/MediaStore.
-  Stream<Transfer> downloadTransfer(String transferId, [String? specificFileId]);
+  Stream<Transfer> downloadTransfer(
+    String transferId, [
+    String? specificFileId,
+  ]);
 }

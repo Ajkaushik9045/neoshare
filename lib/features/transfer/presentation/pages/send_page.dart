@@ -29,7 +29,8 @@ class SendPage extends StatefulWidget {
 }
 
 class _SendPageState extends State<SendPage> {
-  final TextEditingController _recipientCodeController = TextEditingController();
+  final TextEditingController _recipientCodeController =
+      TextEditingController();
   late NotificationPermissionStatus _permissionStatus;
 
   @override
@@ -76,48 +77,73 @@ class _SendPageState extends State<SendPage> {
               'Recipient found. Select files to send.',
             );
 
-            AppLogger.step('Opening native file picker via Pigeon FileHostApi.pickFiles()');
+            AppLogger.step(
+              'Opening native file picker via Pigeon FileHostApi.pickFiles()',
+            );
             List<PickedFileInfo> picked = [];
             try {
               picked = await FileHostApi().pickFiles();
             } catch (e) {
               AppLogger.error('Pigeon pickFiles() threw', data: e.toString());
-              if (context.mounted) AppScaffoldMessenger.showError(context, 'Could not open file picker.');
+              if (context.mounted) {
+                AppScaffoldMessenger.showError(
+                  context,
+                  'Could not open file picker.',
+                );
+              }
               return;
             }
-            AppLogger.success('Pigeon pickFiles() returned ${picked.length} file(s)');
+            AppLogger.success(
+              'Pigeon pickFiles() returned ${picked.length} file(s)',
+            );
             if (!context.mounted) return;
 
             if (picked.isNotEmpty) {
               context.read<SendBloc>().add(FilesChosen(picked));
             }
           } else if (state is FilesSelected && state.isMetered) {
-             final proceed = await showDialog<bool>(
-               context: context,
-               builder: (ctx) => AlertDialog(
-                 title: const Text('Metered Connection'),
-                 content: const Text('You are on a metered connection. Proceed to send?'),
-                 actions: [
-                   TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                   TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
-                 ],
-               ),
-             );
-             if (!context.mounted) return;
-             
-             if (proceed == true) {
-               context.read<SendBloc>().add(const UploadConfirmed());
-             }
+            final proceed = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Metered Connection'),
+                content: const Text(
+                  'You are on a metered connection. Proceed to send?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Continue'),
+                  ),
+                ],
+              ),
+            );
+            if (!context.mounted) return;
+
+            if (proceed == true) {
+              context.read<SendBloc>().add(const UploadConfirmed());
+            }
           } else if (state is UploadComplete) {
             AppScaffoldMessenger.showInfo(context, 'Transfer completed!');
             context.go('/');
+          } else if (state is UploadPaused) {
+            AppScaffoldMessenger.showInfo(
+              context,
+              'Upload paused. Tap "Send Files" to resume.',
+            );
           }
         },
         builder: (context, state) {
-          final isLoading = state is LookingUpRecipient || state is Uploading || state is PreparingUpload;
+          final isLoading =
+              state is LookingUpRecipient ||
+              state is Uploading ||
+              state is PreparingUpload;
           final isUploading = state is Uploading;
           final isPreparing = state is PreparingUpload;
-          
+
           return PlatformScaffold(
             title: 'NeoShare',
             body: StreamBuilder<BatteryWarningState>(
@@ -127,125 +153,154 @@ class _SendPageState extends State<SendPage> {
                 final showBatteryWarning =
                     batterySnapshot.data != BatteryWarningState.none;
                 return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (showBatteryWarning) const BatteryWarningBanner(),
-                  if (_permissionStatus == NotificationPermissionStatus.denied)
-                    _NotificationDeniedBanner(
-                      onDismiss: () => setState(() {
-                        _permissionStatus = NotificationPermissionStatus.granted;
-                      }),
-                    ),
-                  if (_permissionStatus == NotificationPermissionStatus.permanentlyDenied)
-                    const _NotificationPermanentlyDeniedBanner(),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Send Files',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showBatteryWarning) const BatteryWarningBanner(),
+                      if (_permissionStatus ==
+                          NotificationPermissionStatus.denied)
+                        _NotificationDeniedBanner(
+                          onDismiss: () => setState(() {
+                            _permissionStatus =
+                                NotificationPermissionStatus.granted;
+                          }),
+                        ),
+                      if (_permissionStatus ==
+                          NotificationPermissionStatus.permanentlyDenied)
+                        const _NotificationPermanentlyDeniedBanner(),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Send Files',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Enter recipient code to verify the user before sending.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.black54,
-                        ),
-                  ),
-                  const SizedBox(height: 26),
-                  TextField(
-                    controller: _recipientCodeController,
-                    maxLength: 6,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: <TextInputFormatter>[
-                      ShortCodeInputFormatter(),
-                    ],
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          letterSpacing: 3,
-                          fontWeight: FontWeight.w700,
-                        ),
-                    decoration: InputDecoration(
-                      labelText: 'Recipient code',
-                      hintText: 'A4X9K2',
-                      filled: true,
-                      fillColor: const Color(0xFFF6F8FF),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Color(0xFFD4DEFF)),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Color(0xFFD4DEFF)),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Enter recipient code to verify the user before sending.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Color(0xFF5A78FF), width: 1.8),
-                      ),
-                      counterText: '',
-                    ),
-                    enabled: !isLoading,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Enter exactly 6 characters.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.black45,
-                        ),
-                  ),
-                  if (!isUploading) const Spacer(),
-                  if (isUploading) ...[
-                    const SizedBox(height: 16),
-                    Text('Total Progress: ${((state as Uploading).totalProgress * 100).toStringAsFixed(1)}%'),
-                    const SizedBox(height: 10),
-                    LinearProgressIndicator(value: (state as Uploading).totalProgress, minHeight: 8),
-                    const SizedBox(height: 20),
-                    const Text('Files:', style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: (state as Uploading).fileProgress.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 16),
-                        itemBuilder: (context, index) {
-                          final st = state as Uploading;
-                          final keys = st.fileProgress.keys.toList();
-                          final fileName = keys[index];
-                          final prog = st.fileProgress[fileName] ?? 0.0;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(child: Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                  const SizedBox(width: 8),
-                                  Text('${(prog * 100).toStringAsFixed(1)}%'),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              LinearProgressIndicator(value: prog),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ] else if (isLoading)
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const AppPlatformIndicator(),
-                          if (isPreparing) ...[
-                            const SizedBox(height: 12),
-                            const Text('Checking files...'),
-                          ]
+                      const SizedBox(height: 26),
+                      TextField(
+                        controller: _recipientCodeController,
+                        maxLength: 6,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: <TextInputFormatter>[
+                          ShortCodeInputFormatter(),
                         ],
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              letterSpacing: 3,
+                              fontWeight: FontWeight.w700,
+                            ),
+                        decoration: InputDecoration(
+                          labelText: 'Recipient code',
+                          hintText: 'A4X9K2',
+                          filled: true,
+                          fillColor: const Color(0xFFF6F8FF),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD4DEFF),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD4DEFF),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF5A78FF),
+                              width: 1.8,
+                            ),
+                          ),
+                          counterText: '',
+                        ),
+                        enabled: !isLoading,
                       ),
-                    ),
-                ],
-              ),
-            );
+                      const SizedBox(height: 8),
+                      Text(
+                        'Enter exactly 6 characters.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.black45),
+                      ),
+                      if (!isUploading) const Spacer(),
+                      if (isUploading) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Total Progress: ${((state as Uploading).totalProgress * 100).toStringAsFixed(1)}%',
+                        ),
+                        const SizedBox(height: 10),
+                        LinearProgressIndicator(
+                          value: (state as Uploading).totalProgress,
+                          minHeight: 8,
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Files:',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: (state as Uploading).fileProgress.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 16),
+                            itemBuilder: (context, index) {
+                              final st = state as Uploading;
+                              final keys = st.fileProgress.keys.toList();
+                              final fileName = keys[index];
+                              final prog = st.fileProgress[fileName] ?? 0.0;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          fileName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${(prog * 100).toStringAsFixed(1)}%',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  LinearProgressIndicator(value: prog),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ] else if (isLoading)
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const AppPlatformIndicator(),
+                              if (isPreparing) ...[
+                                const SizedBox(height: 12),
+                                const Text('Checking files...'),
+                              ],
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                );
               },
             ),
             bottomBar: SafeArea(
@@ -268,7 +323,9 @@ class _SendPageState extends State<SendPage> {
   }
 
   void _submit(BuildContext context) {
-    final normalizedRecipientCode = ShortCodeUtil.normalize(_recipientCodeController.text);
+    final normalizedRecipientCode = ShortCodeUtil.normalize(
+      _recipientCodeController.text,
+    );
     if (normalizedRecipientCode.length != 6) {
       AppScaffoldMessenger.showError(
         context,
@@ -287,11 +344,11 @@ class _SendPageState extends State<SendPage> {
     }
 
     context.read<SendBloc>().add(
-          LookupRecipient(
-            senderShortCode: currentUser.shortCode,
-            recipientShortCode: normalizedRecipientCode,
-          ),
-        );
+      LookupRecipient(
+        senderShortCode: currentUser.shortCode,
+        recipientShortCode: normalizedRecipientCode,
+      ),
+    );
   }
 }
 
@@ -308,13 +365,11 @@ class _NotificationDeniedBanner extends StatelessWidget {
       content: const Text(
         'Upload progress notifications will not be shown and background uploads may be interrupted.',
       ),
-      leading: const Icon(Icons.notifications_off_outlined, color: Colors.orange),
-      actions: [
-        TextButton(
-          onPressed: onDismiss,
-          child: const Text('Dismiss'),
-        ),
-      ],
+      leading: const Icon(
+        Icons.notifications_off_outlined,
+        color: Colors.orange,
+      ),
+      actions: [TextButton(onPressed: onDismiss, child: const Text('Dismiss'))],
     );
   }
 }

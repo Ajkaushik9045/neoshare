@@ -107,6 +107,14 @@ class TransferRepoImpl implements TransferRepo {
   }
 
   @override
+  Future<TransferStatus> getTransferStatus(String transferId) async {
+    final doc = await _firestore.collection('transfers').doc(transferId).get();
+    if (!doc.exists) return TransferStatus.failed;
+    final raw = doc.data()?['status'] as String?;
+    return TransferModel.mapStatus(raw);
+  }
+
+  @override
   Stream<double> uploadFile(
     TransferFile fileDesc,
     File localFile,

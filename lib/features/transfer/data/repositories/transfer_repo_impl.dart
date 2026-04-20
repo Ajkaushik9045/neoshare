@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../../core/utils/app_logger.dart';
+import '../../../../core/utils/crypto_util.dart';
 import '../../../../core/utils/short_code_util.dart';
 import '../../domain/entities/recipient.dart';
 import '../../domain/entities/transfer.dart';
@@ -265,6 +266,36 @@ class TransferRepoImpl implements TransferRepo {
       }
 
       if (!downloadSuccess) continue;
+
+      // Step 2: Verify SHA-256 integrity before saving
+      if (fileModel.sha256.isNotEmpty) {
+        AppLogger.step('Verifying SHA-256 for ${fileModel.name}');
+        try {
+          final actualHash = await CryptoUtil.computeFileSha256(tempFile);
+          if (actualHash != fileModel.sha256) {
+            AppLogger.error(
+              'SHA-256 mismatch for ${fileModel.name}',
+              data: 'expected=${fileModel.sha256} actual=$actualHash',
+            );
+            await updateFileProgress(
+              transferId,
+              fileModel.fileId,
+              null,
+              0,
+              FileStatus.corrupted,
+            );
+            if (tempFile.existsSync()) await tempFile.delete();
+            continue; // skip saving — file is corrupt
+          }
+          AppLogger.step('SHA-256 verified for ${fileModel.name}');
+        } catch (e) {
+          AppLogger.warning(
+            'SHA-256 check failed for ${fileModel.name}',
+            data: e.toString(),
+          );
+          // Non-fatal — proceed with save if hash check itself errors
+        }
+      }
 
       // Step 2: Save via Pigeon → MediaStore (Android) / Documents (iOS)
       AppLogger.step(

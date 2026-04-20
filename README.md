@@ -36,7 +36,7 @@ To deploy the backend yourself (optional):
 Devices Tested On
 
 Samsung Galaxy Note 20 Ultra (SM-N986B), Android 13, API 33 — primary test device
-Samsung Galaxy S21, Android 13, API 33 — secondary device for two-device transfer testing
+Poco m4 pro — secondary device for two-device transfer testing
 
 
 Architecture
